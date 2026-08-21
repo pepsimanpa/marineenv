@@ -9,4 +9,5 @@ internal interface IEnvironmentDataSource : IDisposable
     SourceStatus Status { get; }
     string? StatusMessage { get; }
     EnvironmentValue? Query(EnvironmentQuery query);
+    GridResult QueryGrid(GridQuery query);
 }
