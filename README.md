@@ -4,12 +4,18 @@
 
 The first development milestone targets **NetCDF (`.nc`) sources only**. Shapefile/SHOM and generated JSON/DAT sources will be added after the NetCDF core is stabilized.
 
+## Projects
+
+- `src/MarineEnvironment` — .NET 8 class library (`MarineEnvironment.dll`)
+- `src/MarineEnvironment.Viewer` — .NET 8 WPF validation viewer that renders data only through the DLL public API
+
 ## Initial scope
 
 - Configuration-driven source registration (`marineenvironment.json`)
 - Runtime source registration/removal/reload API
 - Native NetCDF-C access without forcing source data into a common grid
 - Source-native nearest-neighbour lookup by latitude/longitude and optional depth/time
+- `QueryGrid()` API for visualization/validation
 - Monthly file patterns such as WOA23/GDEM (`{MM}`)
 - Multiple source results for the same environmental element
 
@@ -19,6 +25,29 @@ Initial source targets:
 - WOA23 temperature and salinity
 - GDEM-V temperature and salinity
 - FES2014a tidal-current NetCDF files (reader/calculation to be completed after inspecting extracted constituent files)
+
+## Validation Viewer
+
+The viewer deliberately does **not** read `.nc` files directly. It loads `marineenvironment.json`, obtains registered-source status from `MarineEnvironment.dll`, and renders a sampled grid through `MarineEnvironmentManager.QueryGrid()`.
+
+Current viewer functions:
+
+- Load `marineenvironment.json`
+- Show source ID/type/status
+- Enter latitude/longitude view bounds
+- Select optional depth and month
+- Render a 2-D color raster through `QueryGrid()`
+- Show cursor latitude/longitude/value
+- Click a raster point to cross-check the same location through the single-point `Query()` API
+
+Release build outputs:
+
+```text
+src/MarineEnvironment/bin/Release/net8.0/MarineEnvironment.dll
+src/MarineEnvironment.Viewer/bin/Release/net8.0-windows/MarineEnvironment.Viewer.exe
+```
+
+The viewer is intended as a DLL validation tool rather than a general-purpose NetCDF browser such as Panoply.
 
 ## Configuration path rules
 
@@ -60,10 +89,13 @@ Forward slashes can also be used on Windows if preferred:
 
 The managed library uses the stable NetCDF-C API through P/Invoke. The target application must deploy a compatible NetCDF-C native runtime (`netcdf.dll` on Windows, with its HDF5 dependencies when NetCDF4 files are used) where the process can load it.
 
-## Planned public API
+## Public API examples
+
+Single-point query:
 
 ```csharp
 using MarineEnvironment;
+using MarineEnvironment.Models;
 
 using var marine = new MarineEnvironmentManager();
 var init = marine.Initialize("marineenvironment.json");
@@ -77,4 +109,18 @@ var values = marine.Query(new EnvironmentQuery
 });
 ```
 
-See `examples/marineenvironment.example.json` for the configuration shape.
+Grid query for visualization:
+
+```csharp
+var grid = marine.QueryGrid("ETOPO1", new GridQuery
+{
+    MinLatitude = 32,
+    MaxLatitude = 43,
+    MinLongitude = 122,
+    MaxLongitude = 133,
+    Width = 320,
+    Height = 220
+});
+```
+
+See `examples/marineenvironment.example.json` for the current configuration shape.
