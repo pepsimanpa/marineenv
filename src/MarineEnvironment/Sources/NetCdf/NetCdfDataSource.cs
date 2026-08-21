@@ -67,47 +67,18 @@ internal sealed class NetCdfDataSource : IEnvironmentDataSource
 
         using var file = Open(filePath);
         var ncid = file.Id;
+        var context = BuildReadContext(ncid, query.Depth);
 
-        var latAxis = ReadAxis(ncid, _option.LatitudeVariable);
-        var lonAxis = ReadAxis(ncid, _option.LongitudeVariable);
-        var normalizedLon = NormalizeLongitude(query.Longitude, lonAxis);
+        var normalizedLon = NormalizeLongitude(query.Longitude, context.LongitudeAxis);
+        var latIndex = FindNearestIndex(context.LatitudeAxis.Values, query.Latitude);
+        var lonIndex = FindNearestIndex(context.LongitudeAxis.Values, normalizedLon);
+        var depthIndex = context.DepthAxis is null
+            ? null
+            : FindNearestIndex(context.DepthAxis.Value.Values, query.Depth ?? context.DepthAxis.Value.Values[0]);
 
-        var latIndex = FindNearestIndex(latAxis.Values, query.Latitude);
-        var lonIndex = FindNearestIndex(lonAxis.Values, normalizedLon);
-
-        Axis? depthAxis = null;
-        int? depthIndex = null;
-        if (!string.IsNullOrWhiteSpace(_option.DepthVariable))
-        {
-            depthAxis = ReadAxis(ncid, _option.DepthVariable!);
-            depthIndex = FindNearestIndex(depthAxis.Value.Values, query.Depth ?? depthAxis.Value.Values[0]);
-        }
-
-        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(ncid, _option.Variable, out var dataVarId), $"Find variable '{_option.Variable}'");
-        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varndims(ncid, dataVarId, out var ndims), $"Read dimensions for '{_option.Variable}'");
-        var dimIds = new int[ndims];
-        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_vardimid(ncid, dataVarId, dimIds), $"Read dimension ids for '{_option.Variable}'");
-
-        var indices = new UIntPtr[ndims];
-        SetAxisIndex(dimIds, indices, latAxis.DimensionId, latIndex);
-        SetAxisIndex(dimIds, indices, lonAxis.DimensionId, lonIndex);
-        if (depthAxis is not null && depthIndex is not null)
-            SetAxisIndex(dimIds, indices, depthAxis.Value.DimensionId, depthIndex.Value);
-
-        // Any unsupported singleton dimension defaults to index 0. This is suitable for
-        // WOA monthly files; FES harmonic synthesis receives a dedicated reader later.
-        NetCdfNative.ThrowIfError(NetCdfNative.nc_get_var1_double(ncid, dataVarId, indices, out var raw), $"Read '{_option.Variable}' value");
-
-        if (TryGetAttribute(ncid, dataVarId, "_FillValue", out var fill) && NearlyEqual(raw, fill))
+        var value = ReadValue(ncid, context, latIndex, lonIndex, depthIndex);
+        if (value is null)
             return null;
-        if (TryGetAttribute(ncid, dataVarId, "missing_value", out var missing) && NearlyEqual(raw, missing))
-            return null;
-
-        var value = raw;
-        if (TryGetAttribute(ncid, dataVarId, "scale_factor", out var scale))
-            value *= scale;
-        if (TryGetAttribute(ncid, dataVarId, "add_offset", out var offset))
-            value += offset;
 
         var metadata = _option.Metadata?.ToDictionary(x => x.Key, x => (object?)x.Value)
             ?? new Dictionary<string, object?>();
@@ -119,12 +90,146 @@ internal sealed class NetCdfDataSource : IEnvironmentDataSource
             Type,
             value,
             _option.Unit,
-            latAxis.Values[latIndex],
-            lonAxis.Values[lonIndex],
-            depthAxis is null || depthIndex is null ? null : depthAxis.Value.Values[depthIndex.Value],
+            context.LatitudeAxis.Values[latIndex],
+            context.LongitudeAxis.Values[lonIndex],
+            context.DepthAxis is null || depthIndex is null ? null : context.DepthAxis.Value.Values[depthIndex.Value],
             query.DateTime,
             _option.Variable,
             metadata);
+    }
+
+    public GridResult QueryGrid(GridQuery query)
+    {
+        if (Status != SourceStatus.Ready)
+            throw new InvalidOperationException($"Source '{Id}' is not ready: {Status} - {StatusMessage}");
+        if (query.Width is < 2 or > 2048)
+            throw new ArgumentOutOfRangeException(nameof(query.Width), "Grid width must be between 2 and 2048.");
+        if (query.Height is < 2 or > 2048)
+            throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
+        if (query.MinLatitude >= query.MaxLatitude)
+            throw new ArgumentException("MinLatitude must be less than MaxLatitude.", nameof(query));
+        if (query.MinLongitude >= query.MaxLongitude)
+            throw new ArgumentException("MinLongitude must be less than MaxLongitude.", nameof(query));
+
+        var filePath = ResolveFile(query.DateTime ?? DateTime.Now);
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"NetCDF source file for '{Id}' was not found.", filePath);
+
+        using var file = Open(filePath);
+        var ncid = file.Id;
+        var context = BuildReadContext(ncid, query.Depth);
+        var depthIndex = context.DepthAxis is null
+            ? null
+            : FindNearestIndex(context.DepthAxis.Value.Values, query.Depth ?? context.DepthAxis.Value.Values[0]);
+
+        var outputLatitudes = new double[query.Height];
+        var outputLongitudes = new double[query.Width];
+        var latIndices = new int[query.Height];
+        var lonIndices = new int[query.Width];
+
+        // Viewer rows run north to south, so the first row is MaxLatitude.
+        for (var row = 0; row < query.Height; row++)
+        {
+            var t = row / (double)(query.Height - 1);
+            var requested = query.MaxLatitude + ((query.MinLatitude - query.MaxLatitude) * t);
+            latIndices[row] = FindNearestIndex(context.LatitudeAxis.Values, requested);
+            outputLatitudes[row] = context.LatitudeAxis.Values[latIndices[row]];
+        }
+
+        for (var column = 0; column < query.Width; column++)
+        {
+            var t = column / (double)(query.Width - 1);
+            var requested = query.MinLongitude + ((query.MaxLongitude - query.MinLongitude) * t);
+            var normalized = NormalizeLongitude(requested, context.LongitudeAxis);
+            lonIndices[column] = FindNearestIndex(context.LongitudeAxis.Values, normalized);
+            outputLongitudes[column] = context.LongitudeAxis.Values[lonIndices[column]];
+        }
+
+        var values = new double?[query.Width * query.Height];
+        double? minimum = null;
+        double? maximum = null;
+
+        for (var row = 0; row < query.Height; row++)
+        {
+            for (var column = 0; column < query.Width; column++)
+            {
+                var value = ReadValue(ncid, context, latIndices[row], lonIndices[column], depthIndex);
+                values[(row * query.Width) + column] = value;
+                if (value is null)
+                    continue;
+
+                minimum = minimum is null ? value : Math.Min(minimum.Value, value.Value);
+                maximum = maximum is null ? value : Math.Max(maximum.Value, value.Value);
+            }
+        }
+
+        var metadata = _option.Metadata?.ToDictionary(x => x.Key, x => (object?)x.Value)
+            ?? new Dictionary<string, object?>();
+        metadata["file"] = filePath;
+        metadata["sampling"] = query.Sampling.ToString();
+        metadata["requestedBounds"] = new[]
+        {
+            query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude
+        };
+
+        return new GridResult
+        {
+            SourceId = Id,
+            Type = Type,
+            Width = query.Width,
+            Height = query.Height,
+            Latitudes = outputLatitudes,
+            Longitudes = outputLongitudes,
+            Values = values,
+            Unit = _option.Unit,
+            Depth = context.DepthAxis is null || depthIndex is null ? null : context.DepthAxis.Value.Values[depthIndex.Value],
+            DateTime = query.DateTime,
+            Variable = _option.Variable,
+            Minimum = minimum,
+            Maximum = maximum,
+            Metadata = metadata
+        };
+    }
+
+    private ReadContext BuildReadContext(int ncid, double? requestedDepth)
+    {
+        var latAxis = ReadAxis(ncid, _option.LatitudeVariable);
+        var lonAxis = ReadAxis(ncid, _option.LongitudeVariable);
+
+        Axis? depthAxis = null;
+        if (!string.IsNullOrWhiteSpace(_option.DepthVariable))
+            depthAxis = ReadAxis(ncid, _option.DepthVariable!);
+
+        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(ncid, _option.Variable, out var dataVarId), $"Find variable '{_option.Variable}'");
+        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varndims(ncid, dataVarId, out var ndims), $"Read dimensions for '{_option.Variable}'");
+        var dimIds = new int[ndims];
+        NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_vardimid(ncid, dataVarId, dimIds), $"Read dimension ids for '{_option.Variable}'");
+
+        return new ReadContext(dataVarId, dimIds, latAxis, lonAxis, depthAxis);
+    }
+
+    private static double? ReadValue(int ncid, ReadContext context, int latIndex, int lonIndex, int? depthIndex)
+    {
+        var indices = new UIntPtr[context.DimensionIds.Length];
+        SetAxisIndex(context.DimensionIds, indices, context.LatitudeAxis.DimensionId, latIndex);
+        SetAxisIndex(context.DimensionIds, indices, context.LongitudeAxis.DimensionId, lonIndex);
+        if (context.DepthAxis is not null && depthIndex is not null)
+            SetAxisIndex(context.DimensionIds, indices, context.DepthAxis.Value.DimensionId, depthIndex.Value);
+
+        // Unsupported singleton dimensions (for example WOA monthly time=1) default to zero.
+        NetCdfNative.ThrowIfError(NetCdfNative.nc_get_var1_double(ncid, context.DataVariableId, indices, out var raw), "Read NetCDF value");
+
+        if (TryGetAttribute(ncid, context.DataVariableId, "_FillValue", out var fill) && NearlyEqual(raw, fill))
+            return null;
+        if (TryGetAttribute(ncid, context.DataVariableId, "missing_value", out var missing) && NearlyEqual(raw, missing))
+            return null;
+
+        var value = raw;
+        if (TryGetAttribute(ncid, context.DataVariableId, "scale_factor", out var scale))
+            value *= scale;
+        if (TryGetAttribute(ncid, context.DataVariableId, "add_offset", out var offset))
+            value += offset;
+        return value;
     }
 
     private string ResolveFile(DateTime time)
@@ -218,6 +323,12 @@ internal sealed class NetCdfDataSource : IEnvironmentDataSource
     public void Dispose() { }
 
     private readonly record struct Axis(int DimensionId, double[] Values);
+    private readonly record struct ReadContext(
+        int DataVariableId,
+        int[] DimensionIds,
+        Axis LatitudeAxis,
+        Axis LongitudeAxis,
+        Axis? DepthAxis);
 
     private sealed class NetCdfFile : IDisposable
     {
