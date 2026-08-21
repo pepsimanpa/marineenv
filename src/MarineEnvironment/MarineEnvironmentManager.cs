@@ -103,6 +103,27 @@ public sealed class MarineEnvironmentManager : IDisposable
         ValidateQuery(query);
         ThrowIfDisposed();
 
+        var source = GetReadySource(sourceId);
+        return source.Query(query);
+    }
+
+    /// <summary>
+    /// Returns a regularly sampled 2-D grid for visualization and validation.
+    /// The source file remains in its native grid; this API only samples values for the requested view.
+    /// </summary>
+    public GridResult QueryGrid(string sourceId, GridQuery query)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
+        ArgumentNullException.ThrowIfNull(query);
+        ValidateGridQuery(query);
+        ThrowIfDisposed();
+
+        var source = GetReadySource(sourceId);
+        return source.QueryGrid(query);
+    }
+
+    private IEnvironmentDataSource GetReadySource(string sourceId)
+    {
         IEnvironmentDataSource source;
         lock (_sync)
         {
@@ -112,8 +133,7 @@ public sealed class MarineEnvironmentManager : IDisposable
 
         if (source.Status != SourceStatus.Ready)
             throw new InvalidOperationException($"Source '{sourceId}' is not ready: {source.Status} - {source.StatusMessage}");
-
-        return source.Query(query);
+        return source;
     }
 
     private void AddOrReplaceSource(DataSourceOption option, string resolvedPath)
@@ -147,6 +167,18 @@ public sealed class MarineEnvironmentManager : IDisposable
             throw new ArgumentOutOfRangeException(nameof(query.Latitude), "Latitude must be between -90 and 90 degrees.");
         if (query.Longitude is < -360 or > 360)
             throw new ArgumentOutOfRangeException(nameof(query.Longitude), "Longitude must be between -360 and 360 degrees.");
+    }
+
+    private static void ValidateGridQuery(GridQuery query)
+    {
+        if (query.MinLatitude is < -90 or > 90 || query.MaxLatitude is < -90 or > 90)
+            throw new ArgumentOutOfRangeException(nameof(query), "Latitude bounds must be between -90 and 90 degrees.");
+        if (query.MinLongitude is < -360 or > 360 || query.MaxLongitude is < -360 or > 360)
+            throw new ArgumentOutOfRangeException(nameof(query), "Longitude bounds must be between -360 and 360 degrees.");
+        if (query.MinLatitude >= query.MaxLatitude)
+            throw new ArgumentException("MinLatitude must be less than MaxLatitude.", nameof(query));
+        if (query.MinLongitude >= query.MaxLongitude)
+            throw new ArgumentException("MinLongitude must be less than MaxLongitude.", nameof(query));
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
