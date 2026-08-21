@@ -20,6 +20,42 @@ Initial source targets:
 - GDEM-V temperature and salinity
 - FES2014a tidal-current NetCDF files (reader/calculation to be completed after inspecting extracted constituent files)
 
+## Configuration path rules
+
+`path` in `marineenvironment.json` accepts both absolute and relative paths.
+
+- **Absolute path**: used as specified.
+- **Relative path**: resolved against the directory containing `marineenvironment.json`, not against the process working directory.
+- Both file paths and directory paths are supported, depending on the source definition.
+
+Relative-path example:
+
+```json
+{
+  "id": "ETOPO1",
+  "type": "Bathymetry",
+  "path": "./Database/ETOPO1/ETOPO1_Ice_g_gmt4.nc"
+}
+```
+
+Windows absolute-path example:
+
+```json
+{
+  "id": "ETOPO1",
+  "type": "Bathymetry",
+  "path": "D:\\MarineDB\\ETOPO1\\ETOPO1_Ice_g_gmt4.nc"
+}
+```
+
+Forward slashes can also be used on Windows if preferred:
+
+```json
+{
+  "path": "D:/MarineDB/ETOPO1/ETOPO1_Ice_g_gmt4.nc"
+}
+```
+
 ## Runtime dependency
 
 The managed library uses the stable NetCDF-C API through P/Invoke. The target application must deploy a compatible NetCDF-C native runtime (`netcdf.dll` on Windows, with its HDF5 dependencies when NetCDF4 files are used) where the process can load it.
