@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+
+# Large marine data files are runtime inputs, not source artifacts.
+Database/
+*.nc
+*.grd
+*.tar.xz
