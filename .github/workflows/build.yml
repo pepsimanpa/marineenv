@@ -7,13 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore
-        run: dotnet restore src/MarineEnvironment/MarineEnvironment.csproj
-      - name: Build
-        run: dotnet build src/MarineEnvironment/MarineEnvironment.csproj --configuration Release --no-restore
+      - name: Restore Viewer and Library
+        run: dotnet restore src/MarineEnvironment.Viewer/MarineEnvironment.Viewer.csproj
+      - name: Build Viewer and Library
+        run: dotnet build src/MarineEnvironment.Viewer/MarineEnvironment.Viewer.csproj --configuration Release --no-restore
