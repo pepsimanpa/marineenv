@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "sources": [
+    {
+      "id": "ETOPO1",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": true,
+      "path": "../Database/ETOPO1/ETOPO1_Ice_g_gmt4.nc",
+      "variable": "z",
+      "latitudeVariable": "y",
+      "longitudeVariable": "x",
+      "unit": "m",
+      "metadata": {
+        "dataset": "ETOPO1 1 Arc-Minute Global Relief Model"
+      }
+    },
+    {
+      "id": "ETOPO2022",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/ETOPO2022/ETOPO_2022_v1_15s_N30E120_surface.nc",
+      "variable": "z",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "unit": "m"
+    },
+    {
+      "id": "GEBCO2026",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/GEBCO2026/GEBCO_2026.nc",
+      "variable": "elevation",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "unit": "m"
+    },
+    {
+      "id": "WOA23_TEMPERATURE",
+      "type": "Temperature",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/WOA23/Temperature",
+      "filePattern": "woa23_decav91C0_t{MM}_04.nc",
+      "variable": "t_an",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "unit": "degC"
+    },
+    {
+      "id": "WOA23_SALINITY",
+      "type": "Salinity",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/WOA23/Salinity",
+      "filePattern": "woa23_decav91C0_s{MM}_04.nc",
+      "variable": "s_an",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "unit": "PSU"
+    }
+  ]
+}
