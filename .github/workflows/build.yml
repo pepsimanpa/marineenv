@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore Viewer and Library
-        run: dotnet restore src/MarineEnvironment.Viewer/MarineEnvironment.Viewer.csproj
-      - name: Build Viewer and Library
-        run: dotnet build src/MarineEnvironment.Viewer/MarineEnvironment.Viewer.csproj --configuration Release --no-restore
+      - name: Restore Solution
+        run: dotnet restore MarineEnvironment.sln
+      - name: Build Solution
+        run: dotnet build MarineEnvironment.sln --configuration Release --no-restore
