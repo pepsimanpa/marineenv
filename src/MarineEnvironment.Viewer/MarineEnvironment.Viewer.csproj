@@ -6,12 +6,23 @@
     <LangVersion>9.0</LangVersion>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <AssemblyName>MarineEnvironment.Viewer</AssemblyName>
     <RootNamespace>MarineEnvironment.Viewer</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MarineEnvironment\MarineEnvironment.csproj" />
+  </ItemGroup>
+
+  <!--
+    Put the complete x64 NetCDF-C Windows runtime (netcdf.dll and ALL of its
+    dependent DLLs) under native\win-x64. When present, these files are copied
+    next to MarineEnvironment.Viewer.exe so Windows can resolve native dependencies.
+  -->
+  <ItemGroup>
+    <None Include="..\..\native\win-x64\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
