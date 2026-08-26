@@ -23,6 +23,12 @@ namespace MarineEnvironment.Configuration
         public string? TimeVariable { get; init; }
         public string? Unit { get; init; }
 
+        /// <summary>
+        /// For tidal-current sources, selects the constituent set used for synthesis.
+        /// Major4 = M2/S2/K1/O1, Major6 adds N2/K2, Full uses all 34 FES2014 current constituents.
+        /// </summary>
+        public CurrentConstituentMode CurrentConstituentMode { get; init; } = CurrentConstituentMode.Major4;
+
         /// <summary>Maps query axes to the data variable's dimensions when automatic matching is insufficient.</summary>
         public Dictionary<string, string>? DimensionMap { get; init; }
 
