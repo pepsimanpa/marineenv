@@ -8,8 +8,8 @@
       "enabled": true,
       "path": "../Database/ETOPO1/ETOPO1_Ice_g_gmt4.nc",
       "variable": "z",
-      "latitudeVariable": "y",
-      "longitudeVariable": "x",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
       "unit": "m",
       "metadata": {
         "dataset": "ETOPO1 1 Arc-Minute Global Relief Model"
