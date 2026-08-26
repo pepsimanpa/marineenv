@@ -92,7 +92,7 @@ namespace MarineEnvironment
             }
         }
 
-        public IReadOnlyList<EnvironmentValue> Query(EnvironmentQuery query)
+        public EnvironmentQueryResult Query(EnvironmentQuery query)
         {
             if (query == null)
                 throw new ArgumentNullException(nameof(query));
@@ -103,14 +103,23 @@ namespace MarineEnvironment
             lock (_sync)
                 snapshot = _sources.Values.Where(x => x.Status == SourceStatus.Ready).ToArray();
 
-            var results = new List<EnvironmentValue>(snapshot.Length);
+            var values = new List<EnvironmentValue>(snapshot.Length);
             foreach (var source in snapshot)
             {
                 var value = source.Query(query);
                 if (value != null)
-                    results.Add(value);
+                    values.Add(value);
             }
-            return results;
+
+            return new EnvironmentQueryResult
+            {
+                RequestedLatitude = query.Latitude,
+                RequestedLongitude = query.Longitude,
+                RequestedDepth = query.Depth,
+                RequestedDateTime = query.DateTime,
+                Sampling = query.Sampling,
+                Values = values.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
+            };
         }
 
         public EnvironmentValue? Query(string sourceId, EnvironmentQuery query)
