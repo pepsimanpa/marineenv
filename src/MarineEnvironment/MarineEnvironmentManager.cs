@@ -5,6 +5,7 @@ using System.Linq;
 using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
+using MarineEnvironment.Sources.Fes2014;
 using MarineEnvironment.Sources.NetCdf;
 
 namespace MarineEnvironment
@@ -164,8 +165,10 @@ namespace MarineEnvironment
         {
             if (string.IsNullOrWhiteSpace(option.Id))
                 throw new ArgumentException("A data source id is required.", nameof(option));
-            if (string.IsNullOrWhiteSpace(option.Variable))
-                throw new ArgumentException($"Data source '{option.Id}' requires a NetCDF variable name.", nameof(option));
+            if (option.Format == DataSourceFormat.NetCdf && string.IsNullOrWhiteSpace(option.Variable))
+                throw new ArgumentException($"NetCDF data source '{option.Id}' requires a variable name.", nameof(option));
+            if (option.Format == DataSourceFormat.Fes2014Current && option.Type != EnvironmentType.Current)
+                throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
 
             IEnvironmentDataSource existing;
             if (_sources.TryGetValue(option.Id, out existing))
@@ -179,6 +182,9 @@ namespace MarineEnvironment
             {
                 case DataSourceFormat.NetCdf:
                     source = new NetCdfDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.Fes2014Current:
+                    source = new Fes2014CurrentDataSource(option, resolvedPath);
                     break;
                 default:
                     throw new NotSupportedException($"Data format '{option.Format}' is not supported yet.");
