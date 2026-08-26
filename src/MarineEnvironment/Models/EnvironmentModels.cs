@@ -20,7 +20,8 @@ namespace MarineEnvironment.Models
 
     public enum DataSourceFormat
     {
-        NetCdf
+        NetCdf,
+        Fes2014Current
     }
 
     public enum SourceStatus
