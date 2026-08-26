@@ -48,6 +48,23 @@ namespace MarineEnvironment.Models
         public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
     }
 
+    /// <summary>
+    /// Result returned when a point is queried against all READY data sources.
+    /// Requested coordinates are kept separately from the source-native coordinates
+    /// reported by each EnvironmentValue.
+    /// </summary>
+    public sealed class EnvironmentQueryResult
+    {
+        public double RequestedLatitude { get; init; }
+        public double RequestedLongitude { get; init; }
+        public double? RequestedDepth { get; init; }
+        public DateTime? RequestedDateTime { get; init; }
+        public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
+        public IReadOnlyList<EnvironmentValue> Values { get; init; } = Array.Empty<EnvironmentValue>();
+
+        public int Count => Values.Count;
+    }
+
     public sealed class GridQuery
     {
         public double MinLatitude { get; init; }
