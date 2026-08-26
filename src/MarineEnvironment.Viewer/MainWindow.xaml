@@ -123,15 +123,89 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                        <TextBlock x:Name="MapTitleText" Text="No source rendered" FontSize="16" FontWeight="SemiBold" DockPanel.Dock="Left" />
-                        <TextBlock x:Name="RangeText" Foreground="#57606A" HorizontalAlignment="Right" />
-                    </DockPanel>
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="MapTitleText" Text="No source rendered" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock x:Name="RangeText" Foreground="#57606A" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Width="32" Height="28" Margin="4,0" Click="ZoomOut_Click" ToolTip="Zoom out">−</Button>
+                            <TextBlock x:Name="ZoomText" Width="58" Text="100%" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" />
+                            <Button Width="32" Height="28" Margin="4,0" Click="ZoomIn_Click" ToolTip="Zoom in">+</Button>
+                            <Button Height="28" Margin="4,0,0,0" Padding="10,0" Click="ResetZoom_Click" ToolTip="Reset zoom and pan">Reset</Button>
+                        </StackPanel>
+                    </Grid>
 
                     <Border Grid.Row="1" Background="#F6F8FA" BorderBrush="#D8DEE4" BorderThickness="1" ClipToBounds="True">
-                        <Grid>
-                            <Image x:Name="MapImage" Stretch="Fill" SnapsToDevicePixels="True" MouseMove="MapImage_MouseMove" MouseLeftButtonDown="MapImage_MouseLeftButtonDown" />
-                            <TextBlock x:Name="EmptyMapText" Text="Load a configuration and render a READY source." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#6E7781" FontSize="15" />
+                        <Grid x:Name="MapViewport"
+                              Background="Transparent"
+                              ClipToBounds="True"
+                              MouseWheel="MapViewport_MouseWheel"
+                              MouseLeftButtonDown="MapViewport_MouseLeftButtonDown"
+                              MouseLeftButtonUp="MapViewport_MouseLeftButtonUp"
+                              MouseMove="MapViewport_MouseMove"
+                              MouseLeave="MapViewport_MouseLeave"
+                              SizeChanged="MapViewport_SizeChanged">
+                            <Image x:Name="MapImage"
+                                   Stretch="Fill"
+                                   SnapsToDevicePixels="True"
+                                   IsHitTestVisible="False"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor">
+                                <Image.RenderTransform>
+                                    <MatrixTransform x:Name="MapTransform" />
+                                </Image.RenderTransform>
+                            </Image>
+
+                            <TextBlock x:Name="EmptyMapText"
+                                       Text="Load a configuration and render a READY source."
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="#6E7781"
+                                       FontSize="15"
+                                       IsHitTestVisible="False" />
+
+                            <Border x:Name="ScaleBarPanel"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom"
+                                    Margin="14"
+                                    Padding="7,5"
+                                    Background="#DFFFFFFF"
+                                    BorderBrush="#55000000"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Visibility="Collapsed"
+                                    IsHitTestVisible="False">
+                                <StackPanel>
+                                    <TextBlock x:Name="ScaleBarText"
+                                               Text="-"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#111111"
+                                               HorizontalAlignment="Center"
+                                               Margin="0,0,0,2" />
+                                    <Border x:Name="ScaleBarLine"
+                                            Width="100"
+                                            Height="7"
+                                            BorderBrush="#111111"
+                                            BorderThickness="1,0,1,2" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Margin="14"
+                                    Padding="6,4"
+                                    Background="#BFFFFFFF"
+                                    CornerRadius="3"
+                                    IsHitTestVisible="False">
+                                <TextBlock Text="Wheel: zoom  |  Drag: pan  |  Click: query"
+                                           Foreground="#57606A"
+                                           FontSize="11" />
+                            </Border>
                         </Grid>
                     </Border>
 
