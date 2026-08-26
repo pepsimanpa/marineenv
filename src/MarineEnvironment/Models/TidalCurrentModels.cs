@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace MarineEnvironment.Models
 {
@@ -19,8 +20,8 @@ namespace MarineEnvironment.Models
     }
 
     /// <summary>
-    /// Vector-current result. Direction convention will be finalized with the FES2014 reader
-    /// after the source NetCDF phase convention is verified.
+    /// Synthesized tidal-current vector in SI units. Direction is the oceanographic
+    /// "toward" direction measured clockwise from true north (0=N, 90=E).
     /// </summary>
     public sealed class CurrentValue
     {
@@ -30,6 +31,19 @@ namespace MarineEnvironment.Models
         public double Direction { get; init; }
         public CurrentConstituentMode ConstituentMode { get; init; }
         public int ConstituentCount { get; init; }
+
+        public override string ToString()
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0:0.###} @ {1:0.#}° (U {2:0.###}, V {3:0.###}, {4}/{5})",
+                Speed,
+                Direction,
+                EastwardVelocity,
+                NorthwardVelocity,
+                ConstituentMode,
+                ConstituentCount);
+        }
     }
 
     public sealed record Fes2014Constituent(string Name, string FileStem);
