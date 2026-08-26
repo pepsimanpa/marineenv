@@ -18,6 +18,18 @@ namespace MarineEnvironment.Viewer
         private GridResult? _currentGrid;
         private SourceState? _selectedSource;
 
+        private double _zoom = 1.0;
+        private double _panX;
+        private double _panY;
+        private bool _isPanning;
+        private bool _dragMoved;
+        private Point _panStart;
+        private Point _panOrigin;
+
+        private const double MinZoom = 1.0;
+        private const double MaxZoom = 32.0;
+        private const double ZoomStep = 1.25;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -145,6 +157,10 @@ namespace MarineEnvironment.Viewer
                 CursorInfoText.Text = "Move the pointer over the raster to inspect values.";
                 PointQueryText.Text = !grid.Depth.HasValue ? string.Empty : $"Depth: {grid.Depth:0.###} m";
                 StatusText.Text = $"Rendered {grid.Width} x {grid.Height} samples from {grid.SourceId}.";
+
+                ResetMapTransform();
+                ScaleBarPanel.Visibility = Visibility.Visible;
+                UpdateScaleBar();
             }
             catch (Exception ex)
             {
@@ -158,24 +174,114 @@ namespace MarineEnvironment.Viewer
             }
         }
 
-        private void MapImage_MouseMove(object sender, MouseEventArgs e)
+        private void ZoomIn_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentGrid == null || MapImage.ActualWidth <= 0 || MapImage.ActualHeight <= 0)
-                return;
-
-            if (!TryGetRasterCell(e.GetPosition(MapImage), out var row, out var column))
-                return;
-
-            var value = _currentGrid.GetValue(row, column);
-            CursorInfoText.Text = $"Lat: {_currentGrid.Latitudes[row]:0.#####}   Lon: {_currentGrid.Longitudes[column]:0.#####}   Value: {FormatValue(value)} {_currentGrid.Unit}";
+            ZoomAt(new Point(MapViewport.ActualWidth / 2.0, MapViewport.ActualHeight / 2.0), ZoomStep);
         }
 
-        private async void MapImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void ZoomOut_Click(object sender, RoutedEventArgs e)
+        {
+            ZoomAt(new Point(MapViewport.ActualWidth / 2.0, MapViewport.ActualHeight / 2.0), 1.0 / ZoomStep);
+        }
+
+        private void ResetZoom_Click(object sender, RoutedEventArgs e)
+        {
+            ResetMapTransform();
+        }
+
+        private void MapViewport_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (_currentGrid == null)
+                return;
+
+            var factor = e.Delta > 0 ? ZoomStep : 1.0 / ZoomStep;
+            ZoomAt(e.GetPosition(MapViewport), factor);
+            e.Handled = true;
+        }
+
+        private void MapViewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (_currentGrid == null)
+                return;
+
+            _isPanning = true;
+            _dragMoved = false;
+            _panStart = e.GetPosition(MapViewport);
+            _panOrigin = new Point(_panX, _panY);
+            MapViewport.CaptureMouse();
+            MapViewport.Cursor = Cursors.SizeAll;
+            e.Handled = true;
+        }
+
+        private async void MapViewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isPanning)
+                return;
+
+            var position = e.GetPosition(MapViewport);
+            _isPanning = false;
+            MapViewport.ReleaseMouseCapture();
+            MapViewport.Cursor = Cursors.Arrow;
+
+            if (!_dragMoved)
+                await QueryPointAtViewportPosition(position);
+
+            e.Handled = true;
+        }
+
+        private void MapViewport_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_currentGrid == null)
+                return;
+
+            var position = e.GetPosition(MapViewport);
+
+            if (_isPanning && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var delta = position - _panStart;
+                if (Math.Abs(delta.X) > 2 || Math.Abs(delta.Y) > 2)
+                    _dragMoved = true;
+
+                _panX = _panOrigin.X + delta.X;
+                _panY = _panOrigin.Y + delta.Y;
+                ClampPan();
+                ApplyMapTransform();
+                return;
+            }
+
+            if (TryGetRasterCellFromViewport(position, out var row, out var column))
+            {
+                var value = _currentGrid.GetValue(row, column);
+                CursorInfoText.Text = $"Lat: {_currentGrid.Latitudes[row]:0.#####}   Lon: {_currentGrid.Longitudes[column]:0.#####}   Value: {FormatValue(value)} {_currentGrid.Unit}";
+            }
+            else
+            {
+                CursorInfoText.Text = "Lat: -   Lon: -   Value: -";
+            }
+        }
+
+        private void MapViewport_MouseLeave(object sender, MouseEventArgs e)
+        {
+            if (!_isPanning)
+                CursorInfoText.Text = "Lat: -   Lon: -   Value: -";
+        }
+
+        private void MapViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (_currentGrid == null)
+                return;
+
+            ClampPan();
+            ApplyMapTransform();
+            UpdateScaleBar();
+        }
+
+        private async Task QueryPointAtViewportPosition(Point position)
         {
             if (_currentGrid == null || _selectedSource == null)
                 return;
 
-            if (!TryGetRasterCell(e.GetPosition(MapImage), out var row, out var column))
+            if (!TryGetRasterCellFromViewport(position, out var row, out var column))
                 return;
 
             var latitude = _currentGrid.Latitudes[row];
@@ -206,18 +312,176 @@ namespace MarineEnvironment.Viewer
             }
         }
 
-        private bool TryGetRasterCell(Point point, out int row, out int column)
+        private void ZoomAt(Point viewportPoint, double factor)
+        {
+            if (_currentGrid == null || MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
+                return;
+
+            var oldZoom = _zoom;
+            var newZoom = Math.Max(MinZoom, Math.Min(MaxZoom, oldZoom * factor));
+            if (Math.Abs(newZoom - oldZoom) < 1e-12)
+                return;
+
+            var imageX = (viewportPoint.X - _panX) / oldZoom;
+            var imageY = (viewportPoint.Y - _panY) / oldZoom;
+
+            _zoom = newZoom;
+            _panX = viewportPoint.X - (imageX * newZoom);
+            _panY = viewportPoint.Y - (imageY * newZoom);
+
+            ClampPan();
+            ApplyMapTransform();
+            UpdateScaleBar();
+        }
+
+        private void ResetMapTransform()
+        {
+            _zoom = 1.0;
+            _panX = 0;
+            _panY = 0;
+            ApplyMapTransform();
+            UpdateScaleBar();
+        }
+
+        private void ClampPan()
+        {
+            var width = MapViewport.ActualWidth;
+            var height = MapViewport.ActualHeight;
+            if (width <= 0 || height <= 0)
+                return;
+
+            if (_zoom <= 1.0)
+            {
+                _panX = 0;
+                _panY = 0;
+                return;
+            }
+
+            var minX = width - (width * _zoom);
+            var minY = height - (height * _zoom);
+            _panX = Math.Max(minX, Math.Min(0, _panX));
+            _panY = Math.Max(minY, Math.Min(0, _panY));
+        }
+
+        private void ApplyMapTransform()
+        {
+            var matrix = Matrix.Identity;
+            matrix.Scale(_zoom, _zoom);
+            matrix.Translate(_panX / _zoom, _panY / _zoom);
+            MapTransform.Matrix = matrix;
+            ZoomText.Text = $"{_zoom * 100:0}%";
+        }
+
+        private bool TryGetRasterCellFromViewport(Point viewportPoint, out int row, out int column)
         {
             row = 0;
             column = 0;
-            if (_currentGrid == null)
+            if (_currentGrid == null || MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
                 return false;
 
-            var x = Math.Clamp(point.X / MapImage.ActualWidth, 0, 0.999999);
-            var y = Math.Clamp(point.Y / MapImage.ActualHeight, 0, 0.999999);
-            column = Math.Clamp((int)(x * _currentGrid.Width), 0, _currentGrid.Width - 1);
-            row = Math.Clamp((int)(y * _currentGrid.Height), 0, _currentGrid.Height - 1);
+            var imageX = (viewportPoint.X - _panX) / _zoom;
+            var imageY = (viewportPoint.Y - _panY) / _zoom;
+
+            if (imageX < 0 || imageY < 0 || imageX >= MapViewport.ActualWidth || imageY >= MapViewport.ActualHeight)
+                return false;
+
+            var x = Math.Max(0, Math.Min(0.999999, imageX / MapViewport.ActualWidth));
+            var y = Math.Max(0, Math.Min(0.999999, imageY / MapViewport.ActualHeight));
+            column = Math.Max(0, Math.Min(_currentGrid.Width - 1, (int)(x * _currentGrid.Width)));
+            row = Math.Max(0, Math.Min(_currentGrid.Height - 1, (int)(y * _currentGrid.Height)));
             return true;
+        }
+
+        private void UpdateScaleBar()
+        {
+            if (_currentGrid == null || MapViewport.ActualWidth <= 0 || _zoom <= 0)
+            {
+                ScaleBarPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var centerY = MapViewport.ActualHeight / 2.0;
+            var centerImageY = (centerY - _panY) / _zoom;
+            centerImageY = Math.Max(0, Math.Min(MapViewport.ActualHeight - 1, centerImageY));
+            var normalizedY = centerImageY / Math.Max(1.0, MapViewport.ActualHeight - 1.0);
+            var centerLat = _currentGrid.Latitudes.Length > 1
+                ? Interpolate(_currentGrid.Latitudes[0], _currentGrid.Latitudes[_currentGrid.Latitudes.Length - 1], normalizedY)
+                : _currentGrid.Latitudes[0];
+
+            var minLon = _currentGrid.Longitudes.Min();
+            var maxLon = _currentGrid.Longitudes.Max();
+            var lonSpan = Math.Abs(maxLon - minLon);
+            if (lonSpan <= 0)
+            {
+                ScaleBarPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var kilometersAcrossViewport = HaversineKilometers(centerLat, minLon, centerLat, maxLon) / _zoom;
+            if (kilometersAcrossViewport <= 0 || double.IsNaN(kilometersAcrossViewport) || double.IsInfinity(kilometersAcrossViewport))
+            {
+                ScaleBarPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var targetPixels = Math.Max(70.0, Math.Min(150.0, MapViewport.ActualWidth * 0.18));
+            var targetKm = kilometersAcrossViewport * (targetPixels / MapViewport.ActualWidth);
+            var niceKm = NiceDistance(targetKm);
+            var pixels = MapViewport.ActualWidth * (niceKm / kilometersAcrossViewport);
+            pixels = Math.Max(35.0, Math.Min(MapViewport.ActualWidth * 0.35, pixels));
+
+            ScaleBarLine.Width = pixels;
+            ScaleBarText.Text = niceKm >= 1.0
+                ? $"{niceKm:0.##} km"
+                : $"{niceKm * 1000.0:0} m";
+            ScaleBarPanel.Visibility = Visibility.Visible;
+        }
+
+        private static double NiceDistance(double targetKm)
+        {
+            if (targetKm <= 0)
+                return 1;
+
+            var exponent = Math.Floor(Math.Log10(targetKm));
+            var magnitude = Math.Pow(10, exponent);
+            var normalized = targetKm / magnitude;
+            double nice;
+
+            if (normalized < 1.5)
+                nice = 1;
+            else if (normalized < 3.5)
+                nice = 2;
+            else if (normalized < 7.5)
+                nice = 5;
+            else
+                nice = 10;
+
+            return nice * magnitude;
+        }
+
+        private static double HaversineKilometers(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double EarthRadiusKm = 6371.0088;
+            var phi1 = DegreesToRadians(lat1);
+            var phi2 = DegreesToRadians(lat2);
+            var dPhi = DegreesToRadians(lat2 - lat1);
+            var dLambda = DegreesToRadians(lon2 - lon1);
+
+            var a = Math.Sin(dPhi / 2) * Math.Sin(dPhi / 2)
+                    + Math.Cos(phi1) * Math.Cos(phi2)
+                    * Math.Sin(dLambda / 2) * Math.Sin(dLambda / 2);
+            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(Math.Max(0, 1 - a)));
+            return EarthRadiusKm * c;
+        }
+
+        private static double DegreesToRadians(double degrees)
+        {
+            return degrees * Math.PI / 180.0;
+        }
+
+        private static double Interpolate(double a, double b, double t)
+        {
+            return a + ((b - a) * t);
         }
 
         private static WriteableBitmap CreateBitmap(GridResult grid)
@@ -243,7 +507,7 @@ namespace MarineEnvironment.Viewer
                     continue;
                 }
 
-                var t = Math.Clamp((value.Value - min) / span, 0, 1);
+                var t = Math.Max(0, Math.Min(1, (value.Value - min) / span));
                 var color = TurboLike(t);
                 pixels[p + 0] = color.B;
                 pixels[p + 1] = color.G;
