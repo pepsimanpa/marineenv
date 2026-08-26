@@ -2,11 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net5.0-windows</TargetFramework>
+    <LangVersion>9.0</LangVersion>
     <UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MarineEnvironment.Viewer</AssemblyName>
     <RootNamespace>MarineEnvironment.Viewer</RootNamespace>
   </PropertyGroup>
