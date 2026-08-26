@@ -62,6 +62,17 @@
       "longitudeVariable": "lon",
       "depthVariable": "depth",
       "unit": "PSU"
+    },
+    {
+      "id": "FES2014A_CURRENT",
+      "type": "Current",
+      "format": "Fes2014Current",
+      "enabled": false,
+      "path": "../Database/FES2014a",
+      "currentConstituentMode": "Major4",
+      "metadata": {
+        "dataset": "FES2014a tide currents"
+      }
     }
   ]
 }
