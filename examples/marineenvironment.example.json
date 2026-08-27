@@ -73,6 +73,17 @@
       "metadata": {
         "dataset": "FES2014a tide currents"
       }
+    },
+    {
+      "id": "SHOM_SEABED",
+      "type": "Seabed",
+      "format": "ShomSeabed",
+      "enabled": false,
+      "path": "../Database/SHOM/CarteSedimentaireMondiale.shp",
+      "attributeField": "typelem",
+      "metadata": {
+        "dataset": "SHOM Worldwide Seabed Sediment Map"
+      }
     }
   ]
 }
