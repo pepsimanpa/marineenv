@@ -24,6 +24,12 @@ namespace MarineEnvironment.Configuration
         public string? Unit { get; init; }
 
         /// <summary>
+        /// For SHOM worldwide sediment shapefiles, identifies the DBF field containing the
+        /// seabed nature code. The official product uses 'typelem'.
+        /// </summary>
+        public string AttributeField { get; init; } = "typelem";
+
+        /// <summary>
         /// For tidal-current sources, selects the constituent set used for synthesis.
         /// Major4 = M2/S2/K1/O1, Major6 adds N2/K2, Full uses all 34 FES2014 current constituents.
         /// </summary>
