@@ -1,23 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
-using NetTopologySuite.Features;
-using NetTopologySuite.Geometries;
-using NetTopologySuite.Index.Strtree;
-using NetTopologySuite.IO.Esri;
 
 namespace MarineEnvironment.Sources.Shom
 {
     internal sealed class ShomSeabedDataSource : IEnvironmentDataSource
     {
+        private const double SpatialCellSizeDegrees = 2.0;
+        private const int SpatialColumns = 180;
+        private const int SpatialRows = 90;
+
         private readonly DataSourceOption _option;
         private readonly string _shapefilePath;
-        private readonly GeometryFactory _geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
-        private readonly STRtree<SeabedFeature> _index = new STRtree<SeabedFeature>();
         private readonly List<SeabedFeature> _features = new List<SeabedFeature>();
+        private readonly Dictionary<int, List<SeabedFeature>> _spatialIndex = new Dictionary<int, List<SeabedFeature>>();
 
         public ShomSeabedDataSource(DataSourceOption option, string resolvedPath)
         {
@@ -34,13 +35,13 @@ namespace MarineEnvironment.Sources.Shom
             {
                 ValidateShapefileComponents(_shapefilePath);
                 LoadFeatures();
-                _index.Build();
 
                 if (_features.Count == 0)
-                    throw new InvalidDataException("The SHOM shapefile contains no polygon features.");
+                    throw new InvalidDataException("The SHOM shapefile contains no supported sediment polygon features.");
 
+                BuildSpatialIndex();
                 Status = SourceStatus.Ready;
-                StatusMessage = $"{_features.Count:N0} polygon(s) / field '{_option.AttributeField}'";
+                StatusMessage = $"{_features.Count:N0} polygon(s) / field '{_option.AttributeField}' / built-in SHP reader";
             }
             catch (FileNotFoundException ex)
             {
@@ -147,10 +148,10 @@ namespace MarineEnvironment.Sources.Shom
             metadata["requestedBounds"] = new[] { query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude };
             metadata["sourceBounds"] = new[]
             {
-                _features.Min(x => x.Geometry.EnvelopeInternal.MinY),
-                _features.Max(x => x.Geometry.EnvelopeInternal.MaxY),
-                _features.Min(x => x.Geometry.EnvelopeInternal.MinX),
-                _features.Max(x => x.Geometry.EnvelopeInternal.MaxX)
+                _features.Min(x => x.MinY),
+                _features.Max(x => x.MaxY),
+                _features.Min(x => x.MinX),
+                _features.Max(x => x.MaxX)
             };
 
             return new GridResult
@@ -174,37 +175,139 @@ namespace MarineEnvironment.Sources.Shom
 
         private void LoadFeatures()
         {
-            foreach (var feature in Shapefile.ReadAllFeatures(_shapefilePath))
+            var dbfRecords = ReadDbf(Path.ChangeExtension(_shapefilePath, ".dbf"), _option.AttributeField);
+            using var stream = File.OpenRead(_shapefilePath);
+            using var reader = new BinaryReader(stream);
+
+            if (stream.Length < 100)
+                throw new InvalidDataException("Invalid SHOM .shp file: header is shorter than 100 bytes.");
+
+            var fileCode = ReadInt32BigEndian(reader);
+            if (fileCode != 9994)
+                throw new InvalidDataException($"Invalid SHOM .shp file code: {fileCode}.");
+
+            stream.Position = 24;
+            var fileLengthWords = ReadInt32BigEndian(reader);
+            var declaredFileLength = fileLengthWords * 2L;
+            stream.Position = 28;
+            var version = reader.ReadInt32();
+            var headerShapeType = reader.ReadInt32();
+            if (version != 1000)
+                throw new InvalidDataException($"Unsupported SHP version: {version}.");
+            if (!IsSupportedPolygonShapeType(headerShapeType))
+                throw new InvalidDataException($"SHOM shapefile shape type {headerShapeType} is not a Polygon/PolygonZ/PolygonM dataset.");
+
+            stream.Position = 100;
+            var recordIndex = 0;
+            var logicalEnd = Math.Min(stream.Length, declaredFileLength > 0 ? declaredFileLength : stream.Length);
+
+            while (stream.Position + 8 <= logicalEnd)
             {
-                if (feature.Geometry == null || feature.Geometry.IsEmpty)
-                    continue;
-                if (!(feature.Geometry is Polygon) && !(feature.Geometry is MultiPolygon))
-                    continue;
+                ReadInt32BigEndian(reader); // record number
+                var contentLengthWords = ReadInt32BigEndian(reader);
+                if (contentLengthWords < 2)
+                    throw new InvalidDataException("Invalid SHP record length.");
 
-                var code = ReadAttribute(feature.Attributes, _option.AttributeField)?.ToString()?.Trim();
-                if (!ShomSedimentCatalog.TryGet(code, out var definition))
+                var contentBytes = contentLengthWords * 2L;
+                var contentStart = stream.Position;
+                var contentEnd = contentStart + contentBytes;
+                if (contentEnd > stream.Length)
+                    throw new InvalidDataException("SHP record extends past end of file.");
+
+                var shapeType = reader.ReadInt32();
+                if (shapeType == 0)
+                {
+                    stream.Position = contentEnd;
+                    recordIndex++;
                     continue;
+                }
 
-                int? sourceMapNumber = null;
-                var numero = ReadAttribute(feature.Attributes, "Numero");
-                if (numero != null && int.TryParse(numero.ToString(), out var parsedNumber))
-                    sourceMapNumber = parsedNumber;
+                if (!IsSupportedPolygonShapeType(shapeType))
+                {
+                    stream.Position = contentEnd;
+                    recordIndex++;
+                    continue;
+                }
 
-                var item = new SeabedFeature(feature.Geometry, definition, sourceMapNumber);
-                _features.Add(item);
-                _index.Insert(item.Geometry.EnvelopeInternal, item);
+                var minX = reader.ReadDouble();
+                var minY = reader.ReadDouble();
+                var maxX = reader.ReadDouble();
+                var maxY = reader.ReadDouble();
+                var partCount = reader.ReadInt32();
+                var pointCount = reader.ReadInt32();
+
+                if (partCount <= 0 || pointCount <= 0 || partCount > pointCount)
+                    throw new InvalidDataException($"Invalid SHP polygon record {recordIndex + 1}: parts={partCount}, points={pointCount}.");
+
+                var parts = new int[partCount];
+                for (var i = 0; i < partCount; i++)
+                    parts[i] = reader.ReadInt32();
+
+                var x = new double[pointCount];
+                var y = new double[pointCount];
+                for (var i = 0; i < pointCount; i++)
+                {
+                    x[i] = reader.ReadDouble();
+                    y[i] = reader.ReadDouble();
+                }
+
+                stream.Position = contentEnd; // PolygonZ/M extra arrays are not needed for 2D point-in-polygon.
+
+                if (recordIndex < dbfRecords.Count)
+                {
+                    var attributes = dbfRecords[recordIndex];
+                    if (!attributes.Deleted && ShomSedimentCatalog.TryGet(attributes.Code, out var definition))
+                    {
+                        _features.Add(new SeabedFeature(minX, minY, maxX, maxY, parts, x, y, definition, attributes.SourceMapNumber));
+                    }
+                }
+
+                recordIndex++;
+            }
+        }
+
+        private void BuildSpatialIndex()
+        {
+            foreach (var feature in _features)
+            {
+                var minColumn = LongitudeCell(feature.MinX);
+                var maxColumn = LongitudeCell(feature.MaxX);
+                var minRow = LatitudeCell(feature.MinY);
+                var maxRow = LatitudeCell(feature.MaxY);
+
+                for (var row = minRow; row <= maxRow; row++)
+                {
+                    for (var column = minColumn; column <= maxColumn; column++)
+                    {
+                        var key = (row * SpatialColumns) + column;
+                        if (!_spatialIndex.TryGetValue(key, out var bucket))
+                        {
+                            bucket = new List<SeabedFeature>();
+                            _spatialIndex[key] = bucket;
+                        }
+                        bucket.Add(feature);
+                    }
+                }
             }
         }
 
         private SeabedFeature? FindFeature(double longitude, double latitude)
         {
-            var point = _geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
-            var candidates = _index.Query(point.EnvelopeInternal);
+            if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90)
+                return null;
+
+            var key = (LatitudeCell(latitude) * SpatialColumns) + LongitudeCell(longitude);
+            if (!_spatialIndex.TryGetValue(key, out var candidates))
+                return null;
+
             foreach (var candidate in candidates)
             {
-                if (candidate.Geometry.Covers(point))
+                if (!candidate.EnvelopeContains(longitude, latitude))
+                    continue;
+                if (candidate.Contains(longitude, latitude))
                     return candidate;
             }
+
             return null;
         }
 
@@ -215,20 +318,110 @@ namespace MarineEnvironment.Sources.Shom
                 : new Dictionary<string, object?>();
             metadata["dataset"] = "SHOM Worldwide Seabed Sediment Map";
             metadata["format"] = "ESRI Shapefile";
+            metadata["reader"] = "MarineEnvironment built-in SHP/DBF reader";
             metadata["spatialReference"] = "EPSG:4326 / WGS84";
             metadata["classificationField"] = _option.AttributeField;
             metadata["file"] = _shapefilePath;
             return metadata;
         }
 
-        private static object? ReadAttribute(IAttributesTable attributes, string name)
+        private static List<DbfRecord> ReadDbf(string dbfPath, string codeFieldName)
         {
-            foreach (var candidate in attributes.GetNames())
+            using var stream = File.OpenRead(dbfPath);
+            using var reader = new BinaryReader(stream);
+            if (stream.Length < 32)
+                throw new InvalidDataException("Invalid SHOM .dbf file.");
+
+            reader.ReadByte(); // version
+            reader.ReadBytes(3); // YY MM DD
+            var recordCount = reader.ReadInt32();
+            var headerLength = reader.ReadUInt16();
+            var recordLength = reader.ReadUInt16();
+            stream.Position = 32;
+
+            var fields = new List<DbfField>();
+            while (stream.Position < headerLength)
             {
-                if (string.Equals(candidate, name, StringComparison.OrdinalIgnoreCase))
-                    return attributes[candidate];
+                var first = reader.ReadByte();
+                if (first == 0x0D)
+                    break;
+
+                var descriptor = new byte[32];
+                descriptor[0] = first;
+                var remaining = reader.ReadBytes(31);
+                if (remaining.Length != 31)
+                    throw new EndOfStreamException("Unexpected end of DBF field descriptor.");
+                Buffer.BlockCopy(remaining, 0, descriptor, 1, 31);
+
+                var nameLength = 0;
+                while (nameLength < 11 && descriptor[nameLength] != 0)
+                    nameLength++;
+                var name = Encoding.ASCII.GetString(descriptor, 0, nameLength).Trim();
+                var type = (char)descriptor[11];
+                var length = descriptor[16];
+                fields.Add(new DbfField(name, type, length));
             }
-            return null;
+
+            var codeField = fields.FirstOrDefault(x => string.Equals(x.Name, codeFieldName, StringComparison.OrdinalIgnoreCase));
+            if (codeField == null)
+                throw new InvalidDataException($"DBF field '{codeFieldName}' was not found. Available fields: {string.Join(", ", fields.Select(x => x.Name))}");
+
+            var numeroField = fields.FirstOrDefault(x => string.Equals(x.Name, "Numero", StringComparison.OrdinalIgnoreCase));
+            stream.Position = headerLength;
+            var records = new List<DbfRecord>(Math.Max(0, recordCount));
+
+            for (var recordIndex = 0; recordIndex < recordCount; recordIndex++)
+            {
+                if (stream.Position + recordLength > stream.Length)
+                    break;
+
+                var recordStart = stream.Position;
+                var deleted = reader.ReadByte() == 0x2A;
+                string? code = null;
+                int? sourceMapNumber = null;
+
+                foreach (var field in fields)
+                {
+                    var bytes = reader.ReadBytes(field.Length);
+                    if (bytes.Length != field.Length)
+                        throw new EndOfStreamException("Unexpected end of DBF record.");
+                    var text = Encoding.ASCII.GetString(bytes).Trim().Trim('\0');
+
+                    if (ReferenceEquals(field, codeField))
+                        code = text;
+                    else if (numeroField != null && ReferenceEquals(field, numeroField)
+                             && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedNumber))
+                        sourceMapNumber = parsedNumber;
+                }
+
+                records.Add(new DbfRecord(deleted, code, sourceMapNumber));
+                stream.Position = recordStart + recordLength;
+            }
+
+            return records;
+        }
+
+        private static int ReadInt32BigEndian(BinaryReader reader)
+        {
+            var bytes = reader.ReadBytes(4);
+            if (bytes.Length != 4)
+                throw new EndOfStreamException();
+            return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+        }
+
+        private static bool IsSupportedPolygonShapeType(int shapeType)
+            => shapeType == 5 || shapeType == 15 || shapeType == 25;
+
+        private static int LongitudeCell(double longitude)
+        {
+            var cell = (int)Math.Floor((longitude + 180.0) / SpatialCellSizeDegrees);
+            return Math.Max(0, Math.Min(SpatialColumns - 1, cell));
+        }
+
+        private static int LatitudeCell(double latitude)
+        {
+            var cell = (int)Math.Floor((latitude + 90.0) / SpatialCellSizeDegrees);
+            return Math.Max(0, Math.Min(SpatialRows - 1, cell));
         }
 
         private static string ResolveShapefilePath(string path)
@@ -263,15 +456,117 @@ namespace MarineEnvironment.Sources.Shom
 
         private sealed class SeabedFeature
         {
-            public SeabedFeature(Geometry geometry, ShomSedimentDefinition definition, int? sourceMapNumber)
+            public SeabedFeature(
+                double minX, double minY, double maxX, double maxY,
+                int[] parts, double[] x, double[] y,
+                ShomSedimentDefinition definition, int? sourceMapNumber)
             {
-                Geometry = geometry;
+                MinX = minX;
+                MinY = minY;
+                MaxX = maxX;
+                MaxY = maxY;
+                Parts = parts;
+                X = x;
+                Y = y;
                 Definition = definition;
                 SourceMapNumber = sourceMapNumber;
             }
 
-            public Geometry Geometry { get; }
+            public double MinX { get; }
+            public double MinY { get; }
+            public double MaxX { get; }
+            public double MaxY { get; }
+            public int[] Parts { get; }
+            public double[] X { get; }
+            public double[] Y { get; }
             public ShomSedimentDefinition Definition { get; }
+            public int? SourceMapNumber { get; }
+
+            public bool EnvelopeContains(double x, double y)
+                => x >= MinX && x <= MaxX && y >= MinY && y <= MaxY;
+
+            public bool Contains(double px, double py)
+            {
+                var inside = false;
+                for (var part = 0; part < Parts.Length; part++)
+                {
+                    var start = Parts[part];
+                    var end = part + 1 < Parts.Length ? Parts[part + 1] : X.Length;
+                    if (end - start < 3)
+                        continue;
+
+                    if (RingContains(px, py, start, end, out var onBoundary))
+                        inside = !inside;
+                    if (onBoundary)
+                        return true;
+                }
+                return inside;
+            }
+
+            private bool RingContains(double px, double py, int start, int end, out bool onBoundary)
+            {
+                onBoundary = false;
+                var inside = false;
+                var j = end - 1;
+                for (var i = start; i < end; i++)
+                {
+                    var xi = X[i];
+                    var yi = Y[i];
+                    var xj = X[j];
+                    var yj = Y[j];
+
+                    if (PointOnSegment(px, py, xj, yj, xi, yi))
+                    {
+                        onBoundary = true;
+                        return false;
+                    }
+
+                    var intersects = ((yi > py) != (yj > py))
+                                     && (px < ((xj - xi) * (py - yi) / (yj - yi)) + xi);
+                    if (intersects)
+                        inside = !inside;
+                    j = i;
+                }
+                return inside;
+            }
+
+            private static bool PointOnSegment(double px, double py, double ax, double ay, double bx, double by)
+            {
+                const double tolerance = 1e-10;
+                var cross = ((px - ax) * (by - ay)) - ((py - ay) * (bx - ax));
+                if (Math.Abs(cross) > tolerance)
+                    return false;
+                var minX = Math.Min(ax, bx) - tolerance;
+                var maxX = Math.Max(ax, bx) + tolerance;
+                var minY = Math.Min(ay, by) - tolerance;
+                var maxY = Math.Max(ay, by) + tolerance;
+                return px >= minX && px <= maxX && py >= minY && py <= maxY;
+            }
+        }
+
+        private sealed class DbfField
+        {
+            public DbfField(string name, char type, int length)
+            {
+                Name = name;
+                Type = type;
+                Length = length;
+            }
+            public string Name { get; }
+            public char Type { get; }
+            public int Length { get; }
+        }
+
+        private sealed class DbfRecord
+        {
+            public DbfRecord(bool deleted, string? code, int? sourceMapNumber)
+            {
+                Deleted = deleted;
+                Code = code;
+                SourceMapNumber = sourceMapNumber;
+            }
+            public bool Deleted { get; }
+            public string? Code { get; }
             public int? SourceMapNumber { get; }
         }
     }
