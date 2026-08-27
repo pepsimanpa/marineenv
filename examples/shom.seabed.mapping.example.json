@@ -1,0 +1,106 @@
+{
+  "id": "SHOM_OPERATIONAL_V1",
+  "description": "User-defined operational seabed and burial-rate mapping derived from SHOM typelem codes.",
+  "rules": [
+    {
+      "shomCodes": ["NFRoche"],
+      "shomOriginalClassification": "Rock",
+      "primaryClassification": "암반",
+      "seabed": "암반",
+      "burialRatePercent": 0
+    },
+    {
+      "shomCodes": ["NFC", "NFCG", "NFCS", "NFCV"],
+      "shomOriginalClassification": "Cobbles 계열",
+      "primaryClassification": "암반/자갈",
+      "seabed": "암반",
+      "burialRatePercent": 0
+    },
+    {
+      "shomCodes": ["NFG", "NFGC", "NFGS", "NFGV", "NFGSV", "NFGVS"],
+      "shomOriginalClassification": "Gravel 계열",
+      "primaryClassification": "암반/자갈",
+      "seabed": "암반",
+      "burialRatePercent": 0
+    },
+    {
+      "shomCodes": ["NFS", "NFSC", "NFSG"],
+      "shomOriginalClassification": "Sand 계열",
+      "primaryClassification": "모래",
+      "seabed": "모래",
+      "mudPercent": 0,
+      "sandPercent": 100,
+      "burialRatePercent": 5
+    },
+    {
+      "shomCodes": ["NFSF", "NFSFC", "NFSFG"],
+      "shomOriginalClassification": "Fine Sand 계열",
+      "primaryClassification": "모래",
+      "seabed": "모래",
+      "mudPercent": 0,
+      "sandPercent": 100,
+      "burialRatePercent": 5
+    },
+    {
+      "shomCodes": ["NFSV", "NFSSi"],
+      "shomOriginalClassification": "Muddy Sand / Sand-Silt",
+      "primaryClassification": "뻘·모래 혼합",
+      "seabed": "뻘·모래 반반",
+      "mudPercent": 50,
+      "sandPercent": 50,
+      "burialRatePercent": 5
+    },
+    {
+      "shomCodes": ["NFSFV", "NFSFSi"],
+      "shomOriginalClassification": "Muddy Fine Sand / Fine Sand-Silt",
+      "primaryClassification": "뻘·모래 혼합",
+      "seabed": "뻘·모래 반반",
+      "mudPercent": 50,
+      "sandPercent": 50,
+      "burialRatePercent": 5
+    },
+    {
+      "shomCodes": ["NFSGV", "NFSVG"],
+      "shomOriginalClassification": "Sand + Gravel + Mud / Sand + Gravelly Mud",
+      "primaryClassification": "뻘 우세 혼합",
+      "seabed": "뻘 우세 혼합",
+      "mudPercent": 70,
+      "sandPercent": 30,
+      "burialRatePercent": 15
+    },
+    {
+      "shomCodes": ["NFVC", "NFVG", "NFVSG", "NFVS", "NFVSF"],
+      "shomOriginalClassification": "Mud + Sand/Gravel/Cobbles",
+      "primaryClassification": "뻘 우세 혼합",
+      "seabed": "뻘 우세 혼합",
+      "mudPercent": 70,
+      "sandPercent": 30,
+      "burialRatePercent": 35
+    },
+    {
+      "shomCodes": ["NFV", "NFSi"],
+      "shomOriginalClassification": "Mud / Silt",
+      "primaryClassification": "뻘",
+      "seabed": "뻘 우세 혼합",
+      "mudPercent": 80,
+      "sandPercent": 20,
+      "burialRatePercent": 65
+    },
+    {
+      "shomCodes": ["NFSiA", "NFASi", "NFA"],
+      "shomOriginalClassification": "Clayey Silt / Silty Clay / Clay",
+      "primaryClassification": "뻘",
+      "seabed": "뻘",
+      "mudPercent": 100,
+      "sandPercent": 0,
+      "burialRatePercent": 85
+    },
+    {
+      "shomCodes": ["NFCo", "NFNoP"],
+      "shomOriginalClassification": "Coral / Polymetallic Nodules",
+      "primaryClassification": "기타 단단한 저질",
+      "seabed": "암반",
+      "burialRatePercent": 0
+    }
+  ]
+}
