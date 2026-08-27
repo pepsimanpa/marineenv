@@ -79,8 +79,9 @@
       "type": "Seabed",
       "format": "ShomSeabed",
       "enabled": false,
-      "path": "../Database/SHOM/CarteSedimentaireMondiale.shp",
+      "path": "../Database/SHOM/SHAPE/CarteSedimMonde_2026.shp",
       "attributeField": "typelem",
+      "seabedMappingPath": "./shom.seabed.mapping.example.json",
       "metadata": {
         "dataset": "SHOM Worldwide Seabed Sediment Map"
       }
