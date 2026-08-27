@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace MarineEnvironment.Models
 {
@@ -18,12 +19,45 @@ namespace MarineEnvironment.Models
         Unknown
     }
 
+    public sealed class SeabedDerivedValue
+    {
+        public string MappingTableId { get; init; } = string.Empty;
+        public string ShomOriginalClassification { get; init; } = string.Empty;
+        public string PrimaryClassification { get; init; } = string.Empty;
+        public string Seabed { get; init; } = string.Empty;
+        public double? MudPercent { get; init; }
+        public double? SandPercent { get; init; }
+        public double BurialRatePercent { get; init; }
+
+        public string SeabedDisplay
+        {
+            get
+            {
+                if (!MudPercent.HasValue || !SandPercent.HasValue)
+                    return Seabed;
+
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} ({1:0.#}% / {2:0.#}%)",
+                    Seabed,
+                    MudPercent.Value,
+                    SandPercent.Value);
+            }
+        }
+    }
+
     public sealed class SeabedValue
     {
         public string Code { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public ShomSedimentClass SedimentClass { get; init; }
         public int? SourceMapNumber { get; init; }
+
+        /// <summary>
+        /// Optional user-derived values calculated from a configurable mapping table.
+        /// Raw SHOM values remain available independently in Code/Name/SedimentClass.
+        /// </summary>
+        public SeabedDerivedValue? Derived { get; init; }
 
         public override string ToString()
         {
