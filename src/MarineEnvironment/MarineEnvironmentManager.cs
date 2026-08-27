@@ -7,6 +7,7 @@ using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
 using MarineEnvironment.Sources.Fes2014;
 using MarineEnvironment.Sources.NetCdf;
+using MarineEnvironment.Sources.Shom;
 
 namespace MarineEnvironment
 {
@@ -169,6 +170,8 @@ namespace MarineEnvironment
                 throw new ArgumentException($"NetCDF data source '{option.Id}' requires a variable name.", nameof(option));
             if (option.Format == DataSourceFormat.Fes2014Current && option.Type != EnvironmentType.Current)
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
+            if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
+                throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
 
             IEnvironmentDataSource existing;
             if (_sources.TryGetValue(option.Id, out existing))
@@ -185,6 +188,9 @@ namespace MarineEnvironment
                     break;
                 case DataSourceFormat.Fes2014Current:
                     source = new Fes2014CurrentDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.ShomSeabed:
+                    source = new ShomSeabedDataSource(option, resolvedPath);
                     break;
                 default:
                     throw new NotSupportedException($"Data format '{option.Format}' is not supported yet.");
