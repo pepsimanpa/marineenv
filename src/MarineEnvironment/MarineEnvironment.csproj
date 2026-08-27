@@ -9,8 +9,4 @@
     <RootNamespace>MarineEnvironment</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="NetTopologySuite.IO.Esri.Shapefile" Version="1.2.0" />
-  </ItemGroup>
-
 </Project>
