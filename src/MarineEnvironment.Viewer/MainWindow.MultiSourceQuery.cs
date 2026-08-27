@@ -49,8 +49,9 @@ namespace MarineEnvironment.Viewer
                 {
                     Type = x.Type.ToString(),
                     Source = x.SourceId,
-                    Value = FormatObject(x.Value),
+                    Value = FormatPointValue(x.Value),
                     Unit = x.Unit ?? string.Empty,
+                    Mode = FormatMode(x.Value),
                     Latitude = x.Latitude.ToString("0.#####", CultureInfo.InvariantCulture),
                     Longitude = x.Longitude.ToString("0.#####", CultureInfo.InvariantCulture),
                     Depth = x.Depth.HasValue ? x.Depth.Value.ToString("0.###", CultureInfo.InvariantCulture) : string.Empty,
@@ -66,12 +67,35 @@ namespace MarineEnvironment.Viewer
             }
         }
 
+        private static string FormatPointValue(object? value)
+        {
+            if (value is CurrentValue current)
+            {
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0:0.###} @ {1:0.#}°",
+                    current.Speed,
+                    current.Direction);
+            }
+
+            return FormatObject(value);
+        }
+
+        private static string FormatMode(object? value)
+        {
+            if (value is CurrentValue current)
+                return $"{current.ConstituentMode} ({current.ConstituentCount})";
+
+            return string.Empty;
+        }
+
         private sealed class PointResultRow
         {
             public string Type { get; set; } = string.Empty;
             public string Source { get; set; } = string.Empty;
             public string Value { get; set; } = string.Empty;
             public string Unit { get; set; } = string.Empty;
+            public string Mode { get; set; } = string.Empty;
             public string Latitude { get; set; } = string.Empty;
             public string Longitude { get; set; } = string.Empty;
             public string Depth { get; set; } = string.Empty;
