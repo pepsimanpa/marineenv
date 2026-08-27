@@ -35,6 +35,9 @@ namespace MarineEnvironment.Native
         internal static extern int nc_get_var1_double(int ncid, int varid, UIntPtr[] indexp, out double value);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int nc_get_vara_double(int ncid, int varid, UIntPtr[] startp, UIntPtr[] countp, [Out] double[] value);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int nc_get_att_double(int ncid, int varid, string name, out double value);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
