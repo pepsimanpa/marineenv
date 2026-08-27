@@ -41,10 +41,32 @@ namespace MarineEnvironment.Viewer
                     DateTime = date
                 }));
 
-                PointQueryText.Text = $"Point API: {result.Count} value(s)";
+                var derivedRows = result.Values
+                    .Where(x => x.Value is SeabedValue seabed && seabed.Derived != null)
+                    .Select(x =>
+                    {
+                        var seabed = (SeabedValue)x.Value!;
+                        var derived = seabed.Derived!;
+                        return new DerivedResultRow
+                        {
+                            Mapping = derived.MappingTableId,
+                            Source = x.SourceId,
+                            ShomCode = seabed.Code,
+                            ShomOriginal = derived.ShomOriginalClassification,
+                            Primary = derived.PrimaryClassification,
+                            Seabed = derived.SeabedDisplay,
+                            BurialRate = derived.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                        };
+                    })
+                    .ToArray();
+
+                PointQueryText.Text = derivedRows.Length == 0
+                    ? $"Point API: {result.Count} value(s)"
+                    : $"Point API: {result.Count} value(s) / {derivedRows.Length} derived";
                 PointResultsHeaderText.Text = $"Requested: {result.RequestedLatitude:0.#####}, {result.RequestedLongitude:0.#####}"
                     + (result.RequestedDepth.HasValue ? $"  |  Depth {result.RequestedDepth:0.###} m" : string.Empty)
                     + $"  |  {result.RequestedDateTime:yyyy-MM-dd}";
+
                 PointResultsGrid.ItemsSource = result.Values.Select(x => new PointResultRow
                 {
                     Type = x.Type.ToString(),
@@ -57,8 +79,13 @@ namespace MarineEnvironment.Viewer
                     Depth = x.Depth.HasValue ? x.Depth.Value.ToString("0.###", CultureInfo.InvariantCulture) : string.Empty,
                     Variable = x.Variable ?? string.Empty
                 }).ToArray();
+
+                DerivedResultsGrid.ItemsSource = derivedRows;
+                DerivedResultsPanel.Visibility = derivedRows.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
                 PointResultsPanel.Visibility = Visibility.Visible;
-                StatusText.Text = $"Point query returned {result.Count} value(s) from READY sources.";
+                StatusText.Text = derivedRows.Length == 0
+                    ? $"Point query returned {result.Count} value(s) from READY sources."
+                    : $"Point query returned {result.Count} source value(s) and {derivedRows.Length} user-derived result(s).";
             }
             catch (Exception ex)
             {
@@ -100,6 +127,17 @@ namespace MarineEnvironment.Viewer
             public string Longitude { get; set; } = string.Empty;
             public string Depth { get; set; } = string.Empty;
             public string Variable { get; set; } = string.Empty;
+        }
+
+        private sealed class DerivedResultRow
+        {
+            public string Mapping { get; set; } = string.Empty;
+            public string Source { get; set; } = string.Empty;
+            public string ShomCode { get; set; } = string.Empty;
+            public string ShomOriginal { get; set; } = string.Empty;
+            public string Primary { get; set; } = string.Empty;
+            public string Seabed { get; set; } = string.Empty;
+            public string BurialRate { get; set; } = string.Empty;
         }
     }
 }
