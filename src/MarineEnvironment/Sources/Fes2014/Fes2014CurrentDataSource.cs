@@ -48,9 +48,6 @@ namespace MarineEnvironment.Sources.Fes2014
                         throw new FileNotFoundException($"FES2014 northward constituent '{constituent.Name}' was not found.", northFile);
                 }
 
-                // The M2 headers supplied by AVISO define the common 1/16-degree grid.
-                // Validate the variables on one selected constituent; all selected files
-                // are subsequently checked naturally when queried.
                 var sample = _constituents.First();
                 using (var east = Open(EastFile(sample)))
                 {
@@ -97,8 +94,6 @@ namespace MarineEnvironment.Sources.Fes2014
             if (Status != SourceStatus.Ready)
                 return null;
 
-            // FES is a harmonic prediction model, so a time is essential. If the
-            // caller omits it, use the current UTC instant rather than a month-only climatology.
             var when = query.DateTime ?? DateTime.UtcNow;
             var sample = _constituents.First();
 
@@ -127,9 +122,6 @@ namespace MarineEnvironment.Sources.Fes2014
                 var va = Read2D(north.Id, "Va", latIndex, lonIndex);
                 var vg = Read2D(north.Id, "Vg", latIndex, lonIndex);
 
-                // Currents are not coast-extrapolated in FES2014a. A constituent
-                // with undefined U or V at this cell cannot safely contribute to
-                // the vector synthesis.
                 if (!ua.HasValue || !ug.HasValue || !va.HasValue || !vg.HasValue)
                     continue;
 
@@ -146,7 +138,6 @@ namespace MarineEnvironment.Sources.Fes2014
             var u = uCmPerSecond / 100.0;
             var v = vCmPerSecond / 100.0;
             var speed = Math.Sqrt((u * u) + (v * v));
-            // Oceanographic 'toward' direction: 0=N, 90=E, clockwise from true north.
             var direction = (Math.Atan2(u, v) * 180.0 / Math.PI + 360.0) % 360.0;
 
             var current = new CurrentValue
@@ -159,17 +150,8 @@ namespace MarineEnvironment.Sources.Fes2014
                 ConstituentCount = used
             };
 
-            var metadata = _option.Metadata != null
-                ? _option.Metadata.ToDictionary(x => x.Key, x => (object?)x.Value)
-                : new Dictionary<string, object?>();
-            metadata["dataset"] = "FES2014a tide currents";
-            metadata["nativeAmplitudeUnit"] = "cm/s";
-            metadata["phaseUnit"] = "degrees";
-            metadata["outputUnit"] = "m/s";
-            metadata["directionConvention"] = "toward, clockwise from true north";
-            metadata["constituentMode"] = _option.CurrentConstituentMode.ToString();
+            var metadata = CreateMetadata();
             metadata["constituents"] = usedNames.ToArray();
-            metadata["requestedConstituentCount"] = _constituents.Count;
             metadata["usedConstituentCount"] = used;
 
             return new EnvironmentValue(
@@ -187,8 +169,183 @@ namespace MarineEnvironment.Sources.Fes2014
 
         public GridResult QueryGrid(GridQuery query)
         {
-            throw new NotSupportedException(
-                "FES2014 current raster synthesis is not enabled yet. Use point Query() for the current implementation; grid-speed synthesis will be added with block NetCDF reads for performance.");
+            if (Status != SourceStatus.Ready)
+                throw new InvalidOperationException($"FES2014 current source '{Id}' is not ready: {Status} - {StatusMessage}");
+            if (query.Width < 2 || query.Height < 2)
+                throw new ArgumentOutOfRangeException(nameof(query), "FES2014 current raster width and height must both be at least 2.");
+
+            var when = query.DateTime ?? DateTime.UtcNow;
+            var sample = _constituents.First();
+
+            using var sampleFile = Open(EastFile(sample));
+            var latAxis = ReadAxis(sampleFile.Id, "lat");
+            var lonAxis = ReadAxis(sampleFile.Id, "lon");
+
+            var outputLatitudes = new double[query.Height];
+            var outputLongitudes = new double[query.Width];
+            var latIndices = new int?[query.Height];
+            var lonIndices = new int?[query.Width];
+
+            for (var row = 0; row < query.Height; row++)
+            {
+                var t = row / (double)(query.Height - 1);
+                var requested = query.MaxLatitude + ((query.MinLatitude - query.MaxLatitude) * t);
+                outputLatitudes[row] = requested;
+                if (IsWithinAxis(latAxis.Values, requested))
+                    latIndices[row] = FindNearestIndex(latAxis.Values, requested);
+            }
+
+            for (var column = 0; column < query.Width; column++)
+            {
+                var t = column / (double)(query.Width - 1);
+                var requested = query.MinLongitude + ((query.MaxLongitude - query.MinLongitude) * t);
+                outputLongitudes[column] = requested;
+                var normalized = NormalizeLongitude(requested, lonAxis.Values);
+                if (IsWithinAxis(lonAxis.Values, normalized))
+                    lonIndices[column] = FindNearestIndex(lonAxis.Values, normalized);
+            }
+
+            var validLatIndices = latIndices.Where(x => x.HasValue).Select(x => x!.Value).ToArray();
+            var validLonIndices = lonIndices.Where(x => x.HasValue).Select(x => x!.Value).ToArray();
+            var values = new double?[query.Width * query.Height];
+
+            if (validLatIndices.Length == 0 || validLonIndices.Length == 0)
+            {
+                return new GridResult
+                {
+                    SourceId = Id,
+                    Type = EnvironmentType.Current,
+                    Width = query.Width,
+                    Height = query.Height,
+                    Latitudes = outputLatitudes,
+                    Longitudes = outputLongitudes,
+                    Values = values,
+                    Unit = "m/s",
+                    DateTime = when,
+                    Variable = "FES2014a harmonic current speed",
+                    Metadata = CreateGridMetadata(query, latAxis, lonAxis, when)
+                };
+            }
+
+            var latStart = validLatIndices.Min();
+            var latEnd = validLatIndices.Max();
+            var lonStart = validLonIndices.Min();
+            var lonEnd = validLonIndices.Max();
+            var latCount = latEnd - latStart + 1;
+            var lonCount = lonEnd - lonStart + 1;
+
+            var uSum = new double[values.Length];
+            var vSum = new double[values.Length];
+            var usedCount = new int[values.Length];
+
+            foreach (var constituent in _constituents)
+            {
+                var harmonic = Fes2014Harmonics.Calculate(constituent.Name, when);
+
+                using var east = Open(EastFile(constituent));
+                using var north = Open(NorthFile(constituent));
+
+                var ua = ReadSlab(east.Id, "Ua", latStart, latCount, lonStart, lonCount);
+                var ug = ReadSlab(east.Id, "Ug", latStart, latCount, lonStart, lonCount);
+                var va = ReadSlab(north.Id, "Va", latStart, latCount, lonStart, lonCount);
+                var vg = ReadSlab(north.Id, "Vg", latStart, latCount, lonStart, lonCount);
+
+                for (var row = 0; row < query.Height; row++)
+                {
+                    if (!latIndices[row].HasValue)
+                        continue;
+
+                    var sourceRow = latIndices[row]!.Value;
+                    for (var column = 0; column < query.Width; column++)
+                    {
+                        if (!lonIndices[column].HasValue)
+                            continue;
+
+                        var sourceColumn = lonIndices[column]!.Value;
+                        var uaValue = ua.Get(sourceRow, sourceColumn);
+                        var ugValue = ug.Get(sourceRow, sourceColumn);
+                        var vaValue = va.Get(sourceRow, sourceColumn);
+                        var vgValue = vg.Get(sourceRow, sourceColumn);
+
+                        if (!uaValue.HasValue || !ugValue.HasValue || !vaValue.HasValue || !vgValue.HasValue)
+                            continue;
+
+                        var outputIndex = (row * query.Width) + column;
+                        uSum[outputIndex] += harmonic.Factor * uaValue.Value * Math.Cos(harmonic.Argument - DegreesToRadians(ugValue.Value));
+                        vSum[outputIndex] += harmonic.Factor * vaValue.Value * Math.Cos(harmonic.Argument - DegreesToRadians(vgValue.Value));
+                        usedCount[outputIndex]++;
+                    }
+                }
+            }
+
+            double? minimum = null;
+            double? maximum = null;
+            for (var index = 0; index < values.Length; index++)
+            {
+                if (usedCount[index] == 0)
+                {
+                    values[index] = null;
+                    continue;
+                }
+
+                var u = uSum[index] / 100.0;
+                var v = vSum[index] / 100.0;
+                var speed = Math.Sqrt((u * u) + (v * v));
+                values[index] = speed;
+                minimum = !minimum.HasValue ? speed : Math.Min(minimum.Value, speed);
+                maximum = !maximum.HasValue ? speed : Math.Max(maximum.Value, speed);
+            }
+
+            var metadata = CreateGridMetadata(query, latAxis, lonAxis, when);
+            metadata["sourceSlab"] = new[] { latStart, latEnd, lonStart, lonEnd };
+            metadata["sourceSlabSize"] = new[] { latCount, lonCount };
+
+            return new GridResult
+            {
+                SourceId = Id,
+                Type = EnvironmentType.Current,
+                Width = query.Width,
+                Height = query.Height,
+                Latitudes = outputLatitudes,
+                Longitudes = outputLongitudes,
+                Values = values,
+                Unit = "m/s",
+                DateTime = when,
+                Variable = "FES2014a harmonic current speed",
+                Minimum = minimum,
+                Maximum = maximum,
+                Metadata = metadata
+            };
+        }
+
+        private Dictionary<string, object?> CreateMetadata()
+        {
+            var metadata = _option.Metadata != null
+                ? _option.Metadata.ToDictionary(x => x.Key, x => (object?)x.Value)
+                : new Dictionary<string, object?>();
+            metadata["dataset"] = "FES2014a tide currents";
+            metadata["nativeAmplitudeUnit"] = "cm/s";
+            metadata["phaseUnit"] = "degrees";
+            metadata["outputUnit"] = "m/s";
+            metadata["directionConvention"] = "toward, clockwise from true north";
+            metadata["constituentMode"] = _option.CurrentConstituentMode.ToString();
+            metadata["requestedConstituentCount"] = _constituents.Count;
+            return metadata;
+        }
+
+        private Dictionary<string, object?> CreateGridMetadata(GridQuery query, Axis latAxis, Axis lonAxis, DateTime when)
+        {
+            var metadata = CreateMetadata();
+            metadata["rasterValue"] = "current speed";
+            metadata["sampling"] = query.Sampling.ToString();
+            metadata["predictionTime"] = when;
+            metadata["requestedBounds"] = new[] { query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude };
+            metadata["sourceBounds"] = new[]
+            {
+                latAxis.Values.Min(), latAxis.Values.Max(),
+                lonAxis.Values.Min(), lonAxis.Values.Max()
+            };
+            return metadata;
         }
 
         private string EastFile(Fes2014Constituent c) => Path.Combine(_eastPath, c.FileStem + ".nc");
@@ -203,7 +360,35 @@ namespace MarineEnvironment.Sources.Fes2014
                 return null;
             if (TryGetAttribute(ncid, varId, "missing_value", out var missing) && NearlyEqual(value, missing))
                 return null;
+            if (TryGetAttribute(ncid, varId, "scale_factor", out var scale))
+                value *= scale;
+            if (TryGetAttribute(ncid, varId, "add_offset", out var offset))
+                value += offset;
             return value;
+        }
+
+        private static Slab ReadSlab(int ncid, string variable, int latStart, int latCount, int lonStart, int lonCount)
+        {
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(ncid, variable, out var varId), $"Find FES variable '{variable}'");
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varndims(ncid, varId, out var ndims), $"Read dimensions for FES variable '{variable}'");
+            if (ndims != 2)
+                throw new InvalidDataException($"FES variable '{variable}' must have dimensions (lat, lon).");
+
+            var start = new[] { (UIntPtr)(uint)latStart, (UIntPtr)(uint)lonStart };
+            var count = new[] { (UIntPtr)(uint)latCount, (UIntPtr)(uint)lonCount };
+            var raw = new double[checked(latCount * lonCount)];
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_get_vara_double(ncid, varId, start, count, raw), $"Read FES slab '{variable}'");
+
+            double? fill = null;
+            double? missing = null;
+            var scale = 1.0;
+            var offset = 0.0;
+            if (TryGetAttribute(ncid, varId, "_FillValue", out var fillValue)) fill = fillValue;
+            if (TryGetAttribute(ncid, varId, "missing_value", out var missingValue)) missing = missingValue;
+            if (TryGetAttribute(ncid, varId, "scale_factor", out var scaleValue)) scale = scaleValue;
+            if (TryGetAttribute(ncid, varId, "add_offset", out var offsetValue)) offset = offsetValue;
+
+            return new Slab(latStart, lonStart, lonCount, raw, fill, missing, scale, offset);
         }
 
         private static Axis ReadAxis(int ncid, string variableName)
@@ -273,6 +458,41 @@ namespace MarineEnvironment.Sources.Fes2014
         {
             public Axis(double[] values) { Values = values; }
             public double[] Values { get; }
+        }
+
+        private readonly struct Slab
+        {
+            public Slab(int latStart, int lonStart, int lonCount, double[] values,
+                        double? fill, double? missing, double scale, double offset)
+            {
+                LatStart = latStart;
+                LonStart = lonStart;
+                LonCount = lonCount;
+                Values = values;
+                Fill = fill;
+                Missing = missing;
+                Scale = scale;
+                Offset = offset;
+            }
+
+            public int LatStart { get; }
+            public int LonStart { get; }
+            public int LonCount { get; }
+            public double[] Values { get; }
+            public double? Fill { get; }
+            public double? Missing { get; }
+            public double Scale { get; }
+            public double Offset { get; }
+
+            public double? Get(int latIndex, int lonIndex)
+            {
+                var relativeRow = latIndex - LatStart;
+                var relativeColumn = lonIndex - LonStart;
+                var raw = Values[(relativeRow * LonCount) + relativeColumn];
+                if (Fill.HasValue && NearlyEqual(raw, Fill.Value)) return null;
+                if (Missing.HasValue && NearlyEqual(raw, Missing.Value)) return null;
+                return (raw * Scale) + Offset;
+            }
         }
 
         private sealed class NetCdfFile : IDisposable
