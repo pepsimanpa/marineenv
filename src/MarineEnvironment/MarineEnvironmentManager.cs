@@ -15,6 +15,7 @@ namespace MarineEnvironment
     {
         private readonly object _sync = new object();
         private readonly Dictionary<string, IEnvironmentDataSource> _sources = new Dictionary<string, IEnvironmentDataSource>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, SeabedMappingLookup> _seabedMappings = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase);
         private bool _disposed;
 
         public InitializationResult Initialize()
@@ -33,7 +34,10 @@ namespace MarineEnvironment
                 foreach (var option in options.Sources)
                 {
                     var resolvedPath = ConfigurationLoader.ResolveSourcePath(option.Path, configPath);
-                    AddOrReplaceSource(option, resolvedPath);
+                    var resolvedMappingPath = string.IsNullOrWhiteSpace(option.SeabedMappingPath)
+                        ? null
+                        : ConfigurationLoader.ResolveSourcePath(option.SeabedMappingPath!, configPath);
+                    AddOrReplaceSource(option, resolvedPath, resolvedMappingPath);
                 }
                 return SnapshotInitializationResult();
             }
@@ -46,9 +50,12 @@ namespace MarineEnvironment
             ThrowIfDisposed();
 
             var resolvedPath = Path.GetFullPath(option.Path);
+            var resolvedMappingPath = string.IsNullOrWhiteSpace(option.SeabedMappingPath)
+                ? null
+                : Path.GetFullPath(option.SeabedMappingPath!);
             lock (_sync)
             {
-                AddOrReplaceSource(option, resolvedPath);
+                AddOrReplaceSource(option, resolvedPath, resolvedMappingPath);
                 return ToState(_sources[option.Id]);
             }
         }
@@ -65,6 +72,7 @@ namespace MarineEnvironment
                 if (!_sources.TryGetValue(sourceId, out source))
                     return false;
                 _sources.Remove(sourceId);
+                _seabedMappings.Remove(sourceId);
                 source.Dispose();
                 return true;
             }
@@ -101,16 +109,20 @@ namespace MarineEnvironment
             ValidateQuery(query);
             ThrowIfDisposed();
 
-            IEnvironmentDataSource[] snapshot;
+            IEnvironmentDataSource[] sourceSnapshot;
+            Dictionary<string, SeabedMappingLookup> mappingSnapshot;
             lock (_sync)
-                snapshot = _sources.Values.Where(x => x.Status == SourceStatus.Ready).ToArray();
+            {
+                sourceSnapshot = _sources.Values.Where(x => x.Status == SourceStatus.Ready).ToArray();
+                mappingSnapshot = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
+            }
 
-            var values = new List<EnvironmentValue>(snapshot.Length);
-            foreach (var source in snapshot)
+            var values = new List<EnvironmentValue>(sourceSnapshot.Length);
+            foreach (var source in sourceSnapshot)
             {
                 var value = source.Query(query);
                 if (value != null)
-                    values.Add(value);
+                    values.Add(ApplySeabedMapping(value, mappingSnapshot));
             }
 
             return new EnvironmentQueryResult
@@ -133,7 +145,22 @@ namespace MarineEnvironment
             ValidateQuery(query);
             ThrowIfDisposed();
 
-            return GetReadySource(sourceId).Query(query);
+            var value = GetReadySource(sourceId).Query(query);
+            if (value == null)
+                return null;
+
+            SeabedMappingLookup? mapping;
+            lock (_sync)
+                _seabedMappings.TryGetValue(sourceId, out mapping);
+
+            if (mapping == null)
+                return value;
+
+            var one = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase)
+            {
+                [sourceId] = mapping
+            };
+            return ApplySeabedMapping(value, one);
         }
 
         public GridResult QueryGrid(string sourceId, GridQuery query)
@@ -146,6 +173,49 @@ namespace MarineEnvironment
             ThrowIfDisposed();
 
             return GetReadySource(sourceId).QueryGrid(query);
+        }
+
+        private static EnvironmentValue ApplySeabedMapping(EnvironmentValue value, IReadOnlyDictionary<string, SeabedMappingLookup> mappings)
+        {
+            if (!(value.Value is SeabedValue seabed))
+                return value;
+            if (!mappings.TryGetValue(value.SourceId, out var mapping))
+                return value;
+            if (!mapping.TryGet(seabed.Code, out var rule))
+                return value;
+
+            var derived = new SeabedDerivedValue
+            {
+                MappingTableId = mapping.Table.Id,
+                ShomOriginalClassification = rule.ShomOriginalClassification,
+                PrimaryClassification = rule.PrimaryClassification,
+                Seabed = rule.Seabed,
+                MudPercent = rule.MudPercent,
+                SandPercent = rule.SandPercent,
+                BurialRatePercent = rule.BurialRatePercent
+            };
+
+            var enriched = new SeabedValue
+            {
+                Code = seabed.Code,
+                Name = seabed.Name,
+                SedimentClass = seabed.SedimentClass,
+                SourceMapNumber = seabed.SourceMapNumber,
+                Derived = derived
+            };
+
+            var metadata = value.Metadata != null
+                ? value.Metadata.ToDictionary(x => x.Key, x => x.Value)
+                : new Dictionary<string, object?>();
+            metadata["derivedMappingTable"] = derived.MappingTableId;
+            metadata["derivedShomOriginalClassification"] = derived.ShomOriginalClassification;
+            metadata["derivedPrimaryClassification"] = derived.PrimaryClassification;
+            metadata["derivedSeabed"] = derived.Seabed;
+            metadata["derivedMudPercent"] = derived.MudPercent;
+            metadata["derivedSandPercent"] = derived.SandPercent;
+            metadata["derivedBurialRatePercent"] = derived.BurialRatePercent;
+
+            return value with { Value = enriched, Metadata = metadata };
         }
 
         private IEnvironmentDataSource GetReadySource(string sourceId)
@@ -162,7 +232,7 @@ namespace MarineEnvironment
             return source;
         }
 
-        private void AddOrReplaceSource(DataSourceOption option, string resolvedPath)
+        private void AddOrReplaceSource(DataSourceOption option, string resolvedPath, string? resolvedMappingPath)
         {
             if (string.IsNullOrWhiteSpace(option.Id))
                 throw new ArgumentException("A data source id is required.", nameof(option));
@@ -172,11 +242,16 @@ namespace MarineEnvironment
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
+            if (!string.IsNullOrWhiteSpace(option.SeabedMappingPath) && option.Format != DataSourceFormat.ShomSeabed)
+                throw new ArgumentException($"seabedMappingPath is currently supported only by ShomSeabed sources ('{option.Id}').", nameof(option));
+
+            var mapping = resolvedMappingPath == null ? null : SeabedMappingTableLoader.Load(resolvedMappingPath);
 
             IEnvironmentDataSource existing;
             if (_sources.TryGetValue(option.Id, out existing))
             {
                 _sources.Remove(option.Id);
+                _seabedMappings.Remove(option.Id);
                 existing.Dispose();
             }
 
@@ -197,6 +272,8 @@ namespace MarineEnvironment
             }
 
             _sources.Add(option.Id, source);
+            if (mapping != null)
+                _seabedMappings[option.Id] = mapping;
         }
 
         private InitializationResult SnapshotInitializationResult()
@@ -243,6 +320,7 @@ namespace MarineEnvironment
             foreach (var source in _sources.Values)
                 source.Dispose();
             _sources.Clear();
+            _seabedMappings.Clear();
         }
 
         public void Dispose()
