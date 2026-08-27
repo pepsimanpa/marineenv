@@ -21,7 +21,8 @@ namespace MarineEnvironment.Models
     public enum DataSourceFormat
     {
         NetCdf,
-        Fes2014Current
+        Fes2014Current,
+        ShomSeabed
     }
 
     public enum SourceStatus
@@ -88,6 +89,8 @@ namespace MarineEnvironment.Models
         public double[] Latitudes { get; init; } = Array.Empty<double>();
         public double[] Longitudes { get; init; } = Array.Empty<double>();
         public double?[] Values { get; init; } = Array.Empty<double?>();
+        /// <summary>Optional row-major labels for categorical grids such as seabed sediment classes.</summary>
+        public string?[]? Labels { get; init; }
         public string? Unit { get; init; }
         public double? Depth { get; init; }
         public DateTime? DateTime { get; init; }
@@ -98,11 +101,22 @@ namespace MarineEnvironment.Models
 
         public double? GetValue(int row, int column)
         {
+            ValidateCell(row, column);
+            return Values[(row * Width) + column];
+        }
+
+        public string? GetLabel(int row, int column)
+        {
+            ValidateCell(row, column);
+            return Labels == null ? null : Labels[(row * Width) + column];
+        }
+
+        private void ValidateCell(int row, int column)
+        {
             if ((uint)row >= (uint)Height)
                 throw new ArgumentOutOfRangeException(nameof(row));
             if ((uint)column >= (uint)Width)
                 throw new ArgumentOutOfRangeException(nameof(column));
-            return Values[(row * Width) + column];
         }
     }
 
