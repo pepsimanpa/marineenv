@@ -30,6 +30,14 @@ namespace MarineEnvironment.Configuration
         public string AttributeField { get; init; } = "typelem";
 
         /// <summary>
+        /// Optional user-defined mapping table used to derive operational seabed and burial-rate
+        /// values from the raw SHOM code. Relative paths are resolved against marineenvironment.json.
+        /// This is intentionally separate from the source DB because these values are user rules,
+        /// not values contained in the SHOM shapefile.
+        /// </summary>
+        public string? SeabedMappingPath { get; init; }
+
+        /// <summary>
         /// For tidal-current sources, selects the constituent set used for synthesis.
         /// Major4 = M2/S2/K1/O1, Major6 adds N2/K2, Full uses all 34 FES2014 current constituents.
         /// </summary>
