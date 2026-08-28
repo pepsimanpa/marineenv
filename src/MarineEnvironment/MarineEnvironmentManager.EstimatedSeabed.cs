@@ -234,10 +234,10 @@ namespace MarineEnvironment
             var half = model.NeighborhoodSize / 2;
             var grid = terrain.QueryGrid(new GridQuery
             {
-                MinLatitude = query.Latitude - (latSpacing * half),
-                MaxLatitude = query.Latitude + (latSpacing * half),
-                MinLongitude = query.Longitude - (lonSpacing * half),
-                MaxLongitude = query.Longitude + (lonSpacing * half),
+                MinLatitude = center.Latitude - (latSpacing * half),
+                MaxLatitude = center.Latitude + (latSpacing * half),
+                MinLongitude = center.Longitude - (lonSpacing * half),
+                MaxLongitude = center.Longitude + (lonSpacing * half),
                 DateTime = query.DateTime,
                 Width = model.NeighborhoodSize,
                 Height = model.NeighborhoodSize,
