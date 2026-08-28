@@ -11,7 +11,7 @@ using MarineEnvironment.Sources.Shom;
 
 namespace MarineEnvironment
 {
-    public sealed class MarineEnvironmentManager : IDisposable
+    public sealed partial class MarineEnvironmentManager : IDisposable
     {
         private readonly object _sync = new object();
         private readonly Dictionary<string, IEnvironmentDataSource> _sources = new Dictionary<string, IEnvironmentDataSource>(StringComparer.OrdinalIgnoreCase);
@@ -31,6 +31,7 @@ namespace MarineEnvironment
             lock (_sync)
             {
                 ClearSources();
+                ConfigureEstimatedSeabed(options.EstimatedSeabedModel);
                 foreach (var option in options.Sources)
                 {
                     var resolvedPath = ConfigurationLoader.ResolveSourcePath(option.Path, configPath);
@@ -74,6 +75,7 @@ namespace MarineEnvironment
                 _sources.Remove(sourceId);
                 _seabedMappings.Remove(sourceId);
                 source.Dispose();
+                ResetEstimatedSeabedCalibration();
                 return true;
             }
         }
@@ -117,13 +119,15 @@ namespace MarineEnvironment
                 mappingSnapshot = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
             }
 
-            var values = new List<EnvironmentValue>(sourceSnapshot.Length);
+            var values = new List<EnvironmentValue>(sourceSnapshot.Length + 1);
             foreach (var source in sourceSnapshot)
             {
                 var value = source.Query(query);
                 if (value != null)
                     values.Add(ApplySeabedMapping(value, mappingSnapshot));
             }
+
+            AppendEstimatedSeabed(values, sourceSnapshot, query);
 
             return new EnvironmentQueryResult
             {
@@ -274,6 +278,7 @@ namespace MarineEnvironment
             _sources.Add(option.Id, source);
             if (mapping != null)
                 _seabedMappings[option.Id] = mapping;
+            ResetEstimatedSeabedCalibration();
         }
 
         private InitializationResult SnapshotInitializationResult()
@@ -321,6 +326,7 @@ namespace MarineEnvironment
                 source.Dispose();
             _sources.Clear();
             _seabedMappings.Clear();
+            ResetEstimatedSeabedCalibration();
         }
 
         public void Dispose()

@@ -50,9 +50,36 @@ namespace MarineEnvironment.Configuration
         public Dictionary<string, string>? Metadata { get; init; }
     }
 
+    /// <summary>
+    /// Project-derived seabed composition model combining an ETOPO bathymetry source and
+    /// Martin et al. (2015) predicted porosity. This model produces estimated values only.
+    /// </summary>
+    public sealed class EstimatedSeabedModelOption
+    {
+        public bool Enabled { get; init; }
+        public string Id { get; init; } = "ETOPO2022_MARTIN_SEABED_V1";
+        public string TerrainSourceId { get; init; } = "ETOPO2022";
+        public string PorositySourceId { get; init; } = "MARTIN2015_POROSITY";
+
+        /// <summary>Odd-sized native ETOPO neighborhood used for slope/roughness. V1 uses 3x3.</summary>
+        public int NeighborhoodSize { get; init; } = 3;
+
+        /// <summary>Stride used while sampling ETOPO cells for regional P75/P95 calibration.</summary>
+        public int CalibrationStride { get; init; } = 4;
+        public double CalibrationMinLatitude { get; init; } = 32.0;
+        public double CalibrationMaxLatitude { get; init; } = 43.0;
+        public double CalibrationMinLongitude { get; init; } = 122.0;
+        public double CalibrationMaxLongitude { get; init; } = 133.0;
+
+        /// <summary>Regional Martin porosity anchors used to create the 0..1 mud tendency.</summary>
+        public double PorosityLowPercent { get; init; } = 53.34;
+        public double PorosityHighPercent { get; init; } = 71.96;
+    }
+
     public sealed class MarineEnvironmentOptions
     {
         public string Version { get; init; } = "1.0";
         public List<DataSourceOption> Sources { get; init; } = new List<DataSourceOption>();
+        public EstimatedSeabedModelOption? EstimatedSeabedModel { get; init; }
     }
 }

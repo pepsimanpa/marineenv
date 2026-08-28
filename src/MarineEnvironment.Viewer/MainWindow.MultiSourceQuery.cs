@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -41,24 +42,7 @@ namespace MarineEnvironment.Viewer
                     DateTime = date
                 }));
 
-                var derivedRows = result.Values
-                    .Where(x => x.Value is SeabedValue seabed && seabed.Derived != null)
-                    .Select(x =>
-                    {
-                        var seabed = (SeabedValue)x.Value!;
-                        var derived = seabed.Derived!;
-                        return new DerivedResultRow
-                        {
-                            Mapping = derived.MappingTableId,
-                            Source = x.SourceId,
-                            ShomCode = seabed.Code,
-                            ShomOriginal = derived.ShomOriginalClassification,
-                            Primary = derived.PrimaryClassification,
-                            Seabed = derived.SeabedDisplay,
-                            BurialRate = derived.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
-                        };
-                    })
-                    .ToArray();
+                var derivedRows = result.Values.SelectMany(CreateDerivedRows).ToArray();
 
                 PointQueryText.Text = derivedRows.Length == 0
                     ? $"Point API: {result.Count} value(s)"
@@ -85,12 +69,48 @@ namespace MarineEnvironment.Viewer
                 PointResultsPanel.Visibility = Visibility.Visible;
                 StatusText.Text = derivedRows.Length == 0
                     ? $"Point query returned {result.Count} value(s) from READY sources."
-                    : $"Point query returned {result.Count} source value(s) and {derivedRows.Length} user-derived result(s).";
+                    : $"Point query returned {result.Count} value(s) and {derivedRows.Length} derived/estimated result(s).";
             }
             catch (Exception ex)
             {
                 PointQueryText.Text = $"Point query error: {ex.Message}";
                 StatusText.Text = "Point query failed.";
+            }
+        }
+
+        private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)
+        {
+            if (value.Value is SeabedValue seabed && seabed.Derived != null)
+            {
+                var derived = seabed.Derived;
+                yield return new DerivedResultRow
+                {
+                    Model = derived.MappingTableId,
+                    Source = value.SourceId,
+                    Basis = $"{seabed.Code} | {derived.ShomOriginalClassification} → {derived.PrimaryClassification}",
+                    Classification = derived.PrimaryClassification,
+                    Seabed = derived.SeabedDisplay,
+                    BurialRate = derived.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                };
+                yield break;
+            }
+
+            if (value.Value is EstimatedSeabedValue estimated)
+            {
+                yield return new DerivedResultRow
+                {
+                    Model = estimated.ModelId,
+                    Source = $"{estimated.TerrainSourceId} + {estimated.PorositySourceId}",
+                    Basis = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "P {0:0.#}% | slope {1:0.##}° | rough {2:0.##} m",
+                        estimated.PorosityPercent,
+                        estimated.SlopeDegrees,
+                        estimated.RoughnessMeters),
+                    Classification = estimated.Classification,
+                    Seabed = estimated.SeabedDisplay,
+                    BurialRate = estimated.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                };
             }
         }
 
@@ -105,6 +125,9 @@ namespace MarineEnvironment.Viewer
                     current.Direction);
             }
 
+            if (value is EstimatedSeabedValue estimated)
+                return estimated.SeabedDisplay;
+
             return FormatObject(value);
         }
 
@@ -112,6 +135,8 @@ namespace MarineEnvironment.Viewer
         {
             if (value is CurrentValue current)
                 return $"{current.ConstituentMode} ({current.ConstituentCount})";
+            if (value is EstimatedSeabedValue)
+                return "DerivedEstimate";
 
             return string.Empty;
         }
@@ -131,11 +156,10 @@ namespace MarineEnvironment.Viewer
 
         private sealed class DerivedResultRow
         {
-            public string Mapping { get; set; } = string.Empty;
+            public string Model { get; set; } = string.Empty;
             public string Source { get; set; } = string.Empty;
-            public string ShomCode { get; set; } = string.Empty;
-            public string ShomOriginal { get; set; } = string.Empty;
-            public string Primary { get; set; } = string.Empty;
+            public string Basis { get; set; } = string.Empty;
+            public string Classification { get; set; } = string.Empty;
             public string Seabed { get; set; } = string.Empty;
             public string BurialRate { get; set; } = string.Empty;
         }

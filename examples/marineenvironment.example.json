@@ -1,5 +1,19 @@
 {
   "version": "1.0",
+  "estimatedSeabedModel": {
+    "enabled": true,
+    "id": "ETOPO2022_MARTIN_SEABED_V1",
+    "terrainSourceId": "ETOPO2022",
+    "porositySourceId": "MARTIN2015_POROSITY",
+    "neighborhoodSize": 3,
+    "calibrationStride": 4,
+    "calibrationMinLatitude": 32.0,
+    "calibrationMaxLatitude": 43.0,
+    "calibrationMinLongitude": 122.0,
+    "calibrationMaxLongitude": 133.0,
+    "porosityLowPercent": 53.34,
+    "porosityHighPercent": 71.96
+  },
   "sources": [
     {
       "id": "ETOPO1",
@@ -20,11 +34,15 @@
       "type": "Bathymetry",
       "format": "NetCdf",
       "enabled": false,
-      "path": "../Database/ETOPO2022/ETOPO_2022_v1_15s_N30E120_surface.nc",
+      "path": "../Database/ETOPO2022/ETOPO_2022_v1_15s_N45E120_surface.nc",
       "variable": "z",
       "latitudeVariable": "lat",
       "longitudeVariable": "lon",
-      "unit": "m"
+      "unit": "m",
+      "metadata": {
+        "dataset": "ETOPO 2022 15 arc-second surface elevation",
+        "nativeResolution": "15 arc-second"
+      }
     },
     {
       "id": "GEBCO2026",
