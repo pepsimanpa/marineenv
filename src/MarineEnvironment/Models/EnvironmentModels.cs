@@ -42,6 +42,19 @@ namespace MarineEnvironment.Models
         Nearest
     }
 
+    /// <summary>
+    /// Controls how QueryGrid chooses its output raster geometry.
+    /// Custom preserves the caller-provided Width/Height behavior.
+    /// SourceNative asks gridded sources to return the source-native cells that fall
+    /// inside the requested bounds. Vector/categorical sources may fall back to a
+    /// display raster because they do not have a native raster resolution.
+    /// </summary>
+    public enum GridResolutionMode
+    {
+        Custom,
+        SourceNative
+    }
+
     public sealed class EnvironmentQuery
     {
         public double Latitude { get; init; }
@@ -79,6 +92,7 @@ namespace MarineEnvironment.Models
         public int Width { get; init; } = 480;
         public int Height { get; init; } = 300;
         public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
+        public GridResolutionMode ResolutionMode { get; init; } = GridResolutionMode.Custom;
     }
 
     public sealed class GridResult
