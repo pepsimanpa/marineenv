@@ -75,6 +75,22 @@
       }
     },
     {
+      "id": "MARTIN2015_POROSITY",
+      "type": "Porosity",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/Porosity/Martin2015/grl53425-sup-0002-supinfo.grd",
+      "variable": "z",
+      "latitudeVariable": "y",
+      "longitudeVariable": "x",
+      "unit": "%",
+      "metadata": {
+        "dataset": "Martin et al. (2015) global seafloor sediment porosity",
+        "grid": "5 arc-minute pixel-registered",
+        "fileFormat": "GMT NetCDF4/HDF5"
+      }
+    },
+    {
       "id": "SHOM_SEABED",
       "type": "Seabed",
       "format": "ShomSeabed",
