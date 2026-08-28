@@ -82,20 +82,19 @@
                             <TextBlock x:Name="PointResultsHeaderText" Grid.Row="0" FontWeight="SemiBold" Margin="4,2,4,6"/>
                             <DataGrid x:Name="PointResultsGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100"/><DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*"/><DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="115"/><DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="60"/><DataGridTextColumn Header="Mode" Binding="{Binding Mode}" Width="95"/><DataGridTextColumn Header="Lat" Binding="{Binding Latitude}" Width="85"/><DataGridTextColumn Header="Lon" Binding="{Binding Longitude}" Width="85"/><DataGridTextColumn Header="Depth" Binding="{Binding Depth}" Width="65"/><DataGridTextColumn Header="Variable" Binding="{Binding Variable}" Width="110"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100"/><DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*"/><DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="150"/><DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="60"/><DataGridTextColumn Header="Mode" Binding="{Binding Mode}" Width="105"/><DataGridTextColumn Header="Lat" Binding="{Binding Latitude}" Width="85"/><DataGridTextColumn Header="Lon" Binding="{Binding Longitude}" Width="85"/><DataGridTextColumn Header="Depth" Binding="{Binding Depth}" Width="65"/><DataGridTextColumn Header="Variable" Binding="{Binding Variable}" Width="140"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                             <Border x:Name="DerivedResultsPanel" Grid.Row="2" Margin="0,8,0,0" Padding="6" BorderBrush="#B8C7D9" BorderThickness="1" CornerRadius="4" Background="#F8FAFC" Visibility="Collapsed">
                                 <Grid>
-                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="125"/></Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="User-derived results (configured mapping table)" FontWeight="SemiBold" Margin="4,1,4,5"/>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="135"/></Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Derived / estimated seabed results" FontWeight="SemiBold" Margin="4,1,4,5"/>
                                     <DataGrid x:Name="DerivedResultsGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Mapping" Binding="{Binding Mapping}" Width="115"/>
-                                            <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="110"/>
-                                            <DataGridTextColumn Header="SHOM DB" Binding="{Binding ShomCode}" Width="85"/>
-                                            <DataGridTextColumn Header="SHOM 원 분류" Binding="{Binding ShomOriginal}" Width="165"/>
-                                            <DataGridTextColumn Header="1차 분류" Binding="{Binding Primary}" Width="115"/>
+                                            <DataGridTextColumn Header="Model / Mapping" Binding="{Binding Model}" Width="150"/>
+                                            <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="175"/>
+                                            <DataGridTextColumn Header="Basis" Binding="{Binding Basis}" Width="235"/>
+                                            <DataGridTextColumn Header="분류" Binding="{Binding Classification}" Width="120"/>
                                             <DataGridTextColumn Header="해저저질" Binding="{Binding Seabed}" Width="*"/>
                                             <DataGridTextColumn Header="매몰률" Binding="{Binding BurialRate}" Width="70"/>
                                         </DataGrid.Columns>
