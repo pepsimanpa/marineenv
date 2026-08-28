@@ -12,7 +12,8 @@
     "calibrationMinLongitude": 122.0,
     "calibrationMaxLongitude": 133.0,
     "porosityLowPercent": 53.34,
-    "porosityHighPercent": 71.96
+    "porosityHighPercent": 71.96,
+    "rockDecisionThreshold": 0.5
   },
   "sources": [
     {
