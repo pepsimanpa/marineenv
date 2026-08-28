@@ -11,6 +11,7 @@ namespace MarineEnvironment.Models
         Salinity,
         Current,
         Turbidity,
+        Porosity,
         Seabed,
         BurialRate,
         ContactDensity,
