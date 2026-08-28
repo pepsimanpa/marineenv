@@ -42,10 +42,15 @@
                             <ComboBoxItem Content="01"/><ComboBoxItem Content="02"/><ComboBoxItem Content="03"/><ComboBoxItem Content="04"/><ComboBoxItem Content="05"/><ComboBoxItem Content="06"/><ComboBoxItem Content="07"/><ComboBoxItem Content="08"/><ComboBoxItem Content="09"/><ComboBoxItem Content="10"/><ComboBoxItem Content="11"/><ComboBoxItem Content="12"/>
                         </ComboBox>
                     </Grid>
-                    <TextBlock Text="Viewer Sampling" FontWeight="SemiBold" Margin="0,14,0,6"/>
+                    <TextBlock Text="Render Resolution" FontWeight="SemiBold" Margin="0,14,0,6"/>
+                    <ComboBox x:Name="RenderResolutionComboBox" SelectedIndex="0" Margin="0,0,0,6">
+                        <ComboBoxItem Content="Source Native (gridded sources)"/>
+                        <ComboBoxItem Content="Custom / Display Raster"/>
+                    </ComboBox>
+                    <TextBlock Text="NetCDF/FES use their source grid in Source Native mode. Vector sources such as SHOM use Width/Height only to rasterize the display." TextWrapping="Wrap" Foreground="#57606A" FontSize="11" Margin="0,0,0,6"/>
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="85"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Width"/><TextBox x:Name="GridWidthTextBox" Grid.Row="0" Grid.Column="1" Margin="0,3" Text="320"/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Height"/><TextBox x:Name="GridHeightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="220"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Width"/><TextBox x:Name="GridWidthTextBox" Grid.Row="0" Grid.Column="1" Margin="0,3" Text="320" ToolTip="Used by Custom mode and vector display rasterization."/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Height"/><TextBox x:Name="GridHeightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="220" ToolTip="Used by Custom mode and vector display rasterization."/>
                     </Grid>
                     <Button x:Name="RenderButton" Margin="0,14,0,0" Padding="12,8" Click="Render_Click" FontWeight="SemiBold">Render Selected Source</Button>
                 </StackPanel></ScrollViewer>
@@ -55,7 +60,11 @@
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="3*"/><RowDefinition Height="Auto"/><RowDefinition Height="2*"/></Grid.RowDefinitions>
                     <Grid Grid.Row="0" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"><TextBlock x:Name="MapTitleText" Text="No source rendered" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="RangeText" Foreground="#57606A" Margin="0,2,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="MapTitleText" Text="No source rendered" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="RangeText" Foreground="#57606A" Margin="0,2,0,0"/>
+                            <TextBlock x:Name="ResolutionText" Foreground="#57606A" Margin="0,2,0,0" FontSize="11" TextWrapping="Wrap"/>
+                        </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button Width="32" Height="28" Margin="4,0" Click="ZoomOut_Click">−</Button><TextBlock x:Name="ZoomText" Width="58" Text="100%" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold"/><Button Width="32" Height="28" Margin="4,0" Click="ZoomIn_Click">+</Button><Button Height="28" Margin="4,0,0,0" Padding="10,0" Click="ResetZoom_Click">Reset</Button></StackPanel>
                     </Grid>
                     <Border Grid.Row="1" Background="#F6F8FA" BorderBrush="#D8DEE4" BorderThickness="1" ClipToBounds="True">
