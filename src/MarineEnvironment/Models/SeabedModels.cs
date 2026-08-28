@@ -38,7 +38,7 @@ namespace MarineEnvironment.Models
 
                 return string.Format(
                     CultureInfo.InvariantCulture,
-                    "{0} ({1:0.#}% / {2:0.#}%)",
+                    "{0} (뻘 {1:0.#}% / 모래 {2:0.#}%)",
                     Seabed,
                     MudPercent.Value,
                     SandPercent.Value);
