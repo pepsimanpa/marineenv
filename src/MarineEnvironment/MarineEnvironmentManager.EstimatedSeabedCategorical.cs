@@ -45,14 +45,18 @@ namespace MarineEnvironment
             var mudIndex = SmoothStep(porosityT);
 
             // RockIndex is a terrain-based decision score, not a physical rock fraction.
-            // Once the cell is classified as sediment, Martin porosity partitions only the
-            // sediment end members, so Mud + Sand always equals 100%.
+            // For sediment cells, the operational model needs only the 50:50 mud/sand end member
+            // through pure mud. Therefore Martin's 0..1 mud tendency is mapped to:
+            // Mud = 50..100%, Sand = 50..0%.
             var rockPercent = isRock ? 100.0 : 0.0;
-            var mudPercent = isRock ? 0.0 : 100.0 * mudIndex;
+            var mudPercent = isRock ? 0.0 : 50.0 + (50.0 * mudIndex);
             var sandPercent = isRock ? 0.0 : 100.0 - mudPercent;
+            var sedimentMudShare = mudPercent / 100.0;
 
-            var burialRate = isRock ? 0.0 : CalculateOperationalBurialRate(0.0, mudIndex);
-            var classification = isRock ? "암반" : ClassifySediment(mudIndex);
+            // Existing operational burial anchors are defined against sediment mud share:
+            // 50% -> 5%, 70% -> 35%, 80% -> 65%, 100% -> 85%.
+            var burialRate = isRock ? 0.0 : CalculateOperationalBurialRate(0.0, sedimentMudShare);
+            var classification = isRock ? "암반" : ClassifySediment(mudPercent);
 
             var estimated = new EstimatedSeabedValue
             {
@@ -100,8 +104,10 @@ namespace MarineEnvironment
                 ["rockDecisionThreshold"] = rockThreshold,
                 ["isRock"] = isRock,
                 ["rockDecisionFormula"] = "RockIndex = sqrt(SlopeIndex * RoughnessIndex); Rock if RockIndex >= threshold",
-                ["sedimentMudFormula"] = "Mud% = 100 * smoothstep(PorosityIndex)",
+                ["sedimentMudFormula"] = "Mud% = 50 + 50 * smoothstep(PorosityIndex)",
                 ["sedimentSandFormula"] = "Sand% = 100 - Mud%",
+                ["sedimentMudRange"] = "50..100%",
+                ["sedimentSandRange"] = "50..0%",
                 ["burialPolicy"] = "Rock=0%; sediment uses SHOM_OPERATIONAL_COMPAT_V1 mud-share anchors / user-derived, not observed",
                 ["mudPercent"] = mudPercent,
                 ["sandPercent"] = sandPercent,
@@ -121,11 +127,11 @@ namespace MarineEnvironment
                 metadata));
         }
 
-        private static string ClassifySediment(double mudIndex)
+        private static string ClassifySediment(double mudPercent)
         {
-            if (mudIndex >= 0.60) return "뻘 우세";
-            if (mudIndex >= 0.25) return "뻘·모래 혼합";
-            return "모래 우세";
+            if (mudPercent >= 99.5) return "뻘";
+            if (mudPercent >= 70.0) return "뻘 우세";
+            return "뻘·모래 혼합";
         }
     }
 }
