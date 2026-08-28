@@ -178,6 +178,11 @@ namespace MarineEnvironment.Sources.NetCdf
             SetAxisIndex(context.DimensionIds, indices, context.LongitudeAxis.DimensionId, lonIndex);
             if (context.DepthAxis.HasValue && depthIndex.HasValue) SetAxisIndex(context.DimensionIds, indices, context.DepthAxis.Value.DimensionId, depthIndex.Value);
             NetCdfNative.ThrowIfError(NetCdfNative.nc_get_var1_double(ncid, context.DataVariableId, indices, out var raw), "Read NetCDF value");
+
+            // NetCDF4/GMT grids may use NaN directly as the fill value (Martin et al. 2015
+            // porosity is one example). Treat all non-finite raw samples as NoData before
+            // attempting numeric fill-value comparisons.
+            if (double.IsNaN(raw) || double.IsInfinity(raw)) return null;
             if (TryGetAttribute(ncid, context.DataVariableId, "_FillValue", out var fill) && NearlyEqual(raw, fill)) return null;
             if (TryGetAttribute(ncid, context.DataVariableId, "missing_value", out var missing) && NearlyEqual(raw, missing)) return null;
             var value = raw;
