@@ -127,7 +127,7 @@ namespace MarineEnvironment
                     values.Add(ApplySeabedMapping(value, mappingSnapshot));
             }
 
-            AppendEstimatedSeabed(values, sourceSnapshot, query);
+            AppendEstimatedSeabedCategorical(values, sourceSnapshot, query);
 
             return new EnvironmentQueryResult
             {

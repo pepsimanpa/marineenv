@@ -103,7 +103,9 @@ namespace MarineEnvironment.Viewer
                     Source = $"{estimated.TerrainSourceId} + {estimated.PorositySourceId}",
                     Basis = string.Format(
                         CultureInfo.InvariantCulture,
-                        "P {0:0.#}% | slope {1:0.##}° | rough {2:0.##} m",
+                        "rockIdx {0:0.##}/{1:0.##} | P {2:0.#}% | slope {3:0.##}° | rough {4:0.##} m",
+                        estimated.RockIndex,
+                        estimated.RockDecisionThreshold,
                         estimated.PorosityPercent,
                         estimated.SlopeDegrees,
                         estimated.RoughnessMeters),

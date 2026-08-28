@@ -51,7 +51,7 @@ namespace MarineEnvironment.Configuration
     }
 
     /// <summary>
-    /// Project-derived seabed composition model combining an ETOPO bathymetry source and
+    /// Project-derived seabed model combining an ETOPO bathymetry source and
     /// Martin et al. (2015) predicted porosity. This model produces estimated values only.
     /// </summary>
     public sealed class EstimatedSeabedModelOption
@@ -74,6 +74,12 @@ namespace MarineEnvironment.Configuration
         /// <summary>Regional Martin porosity anchors used to create the 0..1 mud tendency.</summary>
         public double PorosityLowPercent { get; init; } = 53.34;
         public double PorosityHighPercent { get; init; } = 71.96;
+
+        /// <summary>
+        /// Decision threshold for the ETOPO terrain RockIndex. This is a categorical decision
+        /// threshold, not a rock percentage. V1 uses 0.5 on the normalized 0..1 terrain index.
+        /// </summary>
+        public double RockDecisionThreshold { get; init; } = 0.5;
     }
 
     public sealed class MarineEnvironmentOptions
