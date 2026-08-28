@@ -80,6 +80,12 @@ namespace MarineEnvironment.Configuration
     {
         public string Version { get; init; } = "1.0";
         public List<DataSourceOption> Sources { get; init; } = new List<DataSourceOption>();
-        public EstimatedSeabedModelOption? EstimatedSeabedModel { get; init; }
+
+        /// <summary>
+        /// Defaults to the project V1 ETOPO2022 + Martin estimated-seabed model so existing
+        /// configuration files gain the derived result when both required sources are READY.
+        /// Set enabled=false explicitly to disable the derived estimate.
+        /// </summary>
+        public EstimatedSeabedModelOption? EstimatedSeabedModel { get; init; } = new EstimatedSeabedModelOption { Enabled = true };
     }
 }
