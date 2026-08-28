@@ -10,6 +10,7 @@ namespace MarineEnvironment.Sources.NetCdf
 {
     internal sealed class NetCdfDataSource : IEnvironmentDataSource
     {
+        private const long MaxSourceNativeCells = 12_000_000;
         private readonly DataSourceOption _option;
         private readonly string _resolvedPath;
 
@@ -64,6 +65,7 @@ namespace MarineEnvironment.Sources.NetCdf
             if (!value.HasValue) return null;
 
             var metadata = CreateMetadata(filePath, query.Sampling.ToString());
+            AddSourceResolutionMetadata(metadata, context.LatitudeAxis, context.LongitudeAxis);
             return new EnvironmentValue(Id, Type, value.Value, _option.Unit,
                 context.LatitudeAxis.Values[latIndex], context.LongitudeAxis.Values[lonIndex],
                 context.DepthAxis.HasValue && depthIndex.HasValue ? context.DepthAxis.Value.Values[depthIndex.Value] : (double?)null,
@@ -73,10 +75,13 @@ namespace MarineEnvironment.Sources.NetCdf
         public GridResult QueryGrid(GridQuery query)
         {
             if (Status != SourceStatus.Ready) throw new InvalidOperationException($"Source '{Id}' is not ready: {Status} - {StatusMessage}");
-            if (query.Width < 2 || query.Width > 2048) throw new ArgumentOutOfRangeException(nameof(query.Width), "Grid width must be between 2 and 2048.");
-            if (query.Height < 2 || query.Height > 2048) throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
             if (query.MinLatitude >= query.MaxLatitude) throw new ArgumentException("MinLatitude must be less than MaxLatitude.", nameof(query));
             if (query.MinLongitude >= query.MaxLongitude) throw new ArgumentException("MinLongitude must be less than MaxLongitude.", nameof(query));
+            if (query.ResolutionMode == GridResolutionMode.Custom)
+            {
+                if (query.Width < 2 || query.Width > 2048) throw new ArgumentOutOfRangeException(nameof(query.Width), "Custom grid width must be between 2 and 2048.");
+                if (query.Height < 2 || query.Height > 2048) throw new ArgumentOutOfRangeException(nameof(query.Height), "Custom grid height must be between 2 and 2048.");
+            }
 
             var filePath = ResolveFile(query.DateTime ?? DateTime.Now);
             if (!File.Exists(filePath)) throw new FileNotFoundException($"NetCDF source file for '{Id}' was not found.", filePath);
@@ -87,6 +92,86 @@ namespace MarineEnvironment.Sources.NetCdf
                 ? FindNearestIndex(context.DepthAxis.Value.Values, query.Depth ?? context.DepthAxis.Value.Values[0])
                 : (int?)null;
 
+            var geometry = query.ResolutionMode == GridResolutionMode.SourceNative
+                ? BuildSourceNativeGeometry(query, context.LatitudeAxis, context.LongitudeAxis)
+                : BuildCustomGeometry(query, context.LatitudeAxis, context.LongitudeAxis);
+
+            if (query.ResolutionMode == GridResolutionMode.SourceNative &&
+                (long)geometry.Width * geometry.Height > MaxSourceNativeCells)
+            {
+                throw new InvalidOperationException(
+                    $"Source-native selection is {geometry.Width:N0} x {geometry.Height:N0} ({(long)geometry.Width * geometry.Height:N0} cells), " +
+                    $"which exceeds the {MaxSourceNativeCells:N0}-cell viewer safety limit. Reduce the view bounds or use Custom resolution.");
+            }
+
+            var values = new double?[geometry.Width * geometry.Height];
+            double? minimum = null, maximum = null;
+
+            var validLatIndices = geometry.LatitudeIndices.Where(x => x.HasValue).Select(x => x!.Value).ToArray();
+            var validLonIndices = geometry.LongitudeIndices.Where(x => x.HasValue).Select(x => x!.Value).ToArray();
+            int? latStart = null, latEnd = null, lonStart = null, lonEnd = null;
+
+            if (validLatIndices.Length > 0 && validLonIndices.Length > 0)
+            {
+                latStart = validLatIndices.Min();
+                latEnd = validLatIndices.Max();
+                lonStart = validLonIndices.Min();
+                lonEnd = validLonIndices.Max();
+
+                var slab = ReadSlab(
+                    file.Id,
+                    context,
+                    latStart.Value,
+                    latEnd.Value - latStart.Value + 1,
+                    lonStart.Value,
+                    lonEnd.Value - lonStart.Value + 1,
+                    depthIndex);
+
+                for (var row = 0; row < geometry.Height; row++)
+                {
+                    if (!geometry.LatitudeIndices[row].HasValue) continue;
+                    var localLat = geometry.LatitudeIndices[row]!.Value - latStart.Value;
+
+                    for (var column = 0; column < geometry.Width; column++)
+                    {
+                        if (!geometry.LongitudeIndices[column].HasValue) continue;
+                        var localLon = geometry.LongitudeIndices[column]!.Value - lonStart.Value;
+                        var value = slab.Get(localLat, localLon);
+                        var outputIndex = (row * geometry.Width) + column;
+                        values[outputIndex] = value;
+                        if (!value.HasValue) continue;
+                        minimum = !minimum.HasValue ? value : Math.Min(minimum.Value, value.Value);
+                        maximum = !maximum.HasValue ? value : Math.Max(maximum.Value, value.Value);
+                    }
+                }
+            }
+
+            var metadata = CreateMetadata(filePath, query.Sampling.ToString());
+            metadata["requestedBounds"] = new[] { query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude };
+            metadata["sourceBounds"] = new[] {
+                context.LatitudeAxis.Values.Min(), context.LatitudeAxis.Values.Max(),
+                context.LongitudeAxis.Values.Min(), context.LongitudeAxis.Values.Max()
+            };
+            metadata["resolutionMode"] = query.ResolutionMode.ToString();
+            metadata["sourceNativeRaster"] = true;
+            metadata["renderGrid"] = new[] { geometry.Width, geometry.Height };
+            if (latStart.HasValue && latEnd.HasValue && lonStart.HasValue && lonEnd.HasValue)
+                metadata["sourceSlab"] = new[] { latStart.Value, latEnd.Value, lonStart.Value, lonEnd.Value };
+            AddSourceResolutionMetadata(metadata, context.LatitudeAxis, context.LongitudeAxis);
+
+            return new GridResult
+            {
+                SourceId = Id, Type = Type, Width = geometry.Width, Height = geometry.Height,
+                Latitudes = geometry.Latitudes, Longitudes = geometry.Longitudes, Values = values,
+                Unit = _option.Unit,
+                Depth = context.DepthAxis.HasValue && depthIndex.HasValue ? context.DepthAxis.Value.Values[depthIndex.Value] : (double?)null,
+                DateTime = query.DateTime, Variable = _option.Variable,
+                Minimum = minimum, Maximum = maximum, Metadata = metadata
+            };
+        }
+
+        private static GridGeometry BuildCustomGeometry(GridQuery query, Axis latitudeAxis, Axis longitudeAxis)
+        {
             var outputLatitudes = new double[query.Height];
             var outputLongitudes = new double[query.Width];
             var latIndices = new int?[query.Height];
@@ -97,8 +182,8 @@ namespace MarineEnvironment.Sources.NetCdf
                 var t = row / (double)(query.Height - 1);
                 var requested = query.MaxLatitude + ((query.MinLatitude - query.MaxLatitude) * t);
                 outputLatitudes[row] = requested;
-                if (IsWithinAxis(context.LatitudeAxis.Values, requested))
-                    latIndices[row] = FindNearestIndex(context.LatitudeAxis.Values, requested);
+                if (IsWithinAxis(latitudeAxis.Values, requested))
+                    latIndices[row] = FindNearestIndex(latitudeAxis.Values, requested);
             }
 
             for (var column = 0; column < query.Width; column++)
@@ -106,47 +191,50 @@ namespace MarineEnvironment.Sources.NetCdf
                 var t = column / (double)(query.Width - 1);
                 var requested = query.MinLongitude + ((query.MaxLongitude - query.MinLongitude) * t);
                 outputLongitudes[column] = requested;
-                var normalized = NormalizeLongitude(requested, context.LongitudeAxis);
-                if (IsWithinAxis(context.LongitudeAxis.Values, normalized))
-                    lonIndices[column] = FindNearestIndex(context.LongitudeAxis.Values, normalized);
+                var normalized = NormalizeLongitude(requested, longitudeAxis);
+                if (IsWithinAxis(longitudeAxis.Values, normalized))
+                    lonIndices[column] = FindNearestIndex(longitudeAxis.Values, normalized);
             }
 
-            var values = new double?[query.Width * query.Height];
-            double? minimum = null, maximum = null;
-            for (var row = 0; row < query.Height; row++)
-            {
-                for (var column = 0; column < query.Width; column++)
-                {
-                    if (!latIndices[row].HasValue || !lonIndices[column].HasValue)
-                    {
-                        values[(row * query.Width) + column] = null;
-                        continue;
-                    }
+            return new GridGeometry(outputLatitudes, outputLongitudes, latIndices, lonIndices);
+        }
 
-                    var value = ReadValue(file.Id, context, latIndices[row]!.Value, lonIndices[column]!.Value, depthIndex);
-                    values[(row * query.Width) + column] = value;
-                    if (!value.HasValue) continue;
-                    minimum = !minimum.HasValue ? value : Math.Min(minimum.Value, value.Value);
-                    maximum = !maximum.HasValue ? value : Math.Max(maximum.Value, value.Value);
-                }
-            }
+        private static GridGeometry BuildSourceNativeGeometry(GridQuery query, Axis latitudeAxis, Axis longitudeAxis)
+        {
+            var latIndicesRaw = SelectNativeIndices(latitudeAxis.Values, query.MinLatitude, query.MaxLatitude, descending: true);
+            var normalizedMinLon = NormalizeLongitude(query.MinLongitude, longitudeAxis);
+            var normalizedMaxLon = NormalizeLongitude(query.MaxLongitude, longitudeAxis);
+            if (normalizedMinLon > normalizedMaxLon)
+                throw new NotSupportedException("Source-native rendering across a longitude wrap/dateline is not supported yet. Use Custom resolution for this view.");
 
-            var metadata = CreateMetadata(filePath, query.Sampling.ToString());
-            metadata["requestedBounds"] = new[] { query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude };
-            metadata["sourceBounds"] = new[] {
-                context.LatitudeAxis.Values.Min(), context.LatitudeAxis.Values.Max(),
-                context.LongitudeAxis.Values.Min(), context.LongitudeAxis.Values.Max()
-            };
+            var lonIndicesRaw = SelectNativeIndices(longitudeAxis.Values, normalizedMinLon, normalizedMaxLon, descending: false);
+            var latitudes = latIndicesRaw.Select(i => latitudeAxis.Values[i]).ToArray();
+            var longitudes = lonIndicesRaw.Select(i => ToRequestedLongitudeConvention(longitudeAxis.Values[i], query.MinLongitude, query.MaxLongitude)).ToArray();
+            var latIndices = latIndicesRaw.Select(i => (int?)i).ToArray();
+            var lonIndices = lonIndicesRaw.Select(i => (int?)i).ToArray();
+            return new GridGeometry(latitudes, longitudes, latIndices, lonIndices);
+        }
 
-            return new GridResult
-            {
-                SourceId = Id, Type = Type, Width = query.Width, Height = query.Height,
-                Latitudes = outputLatitudes, Longitudes = outputLongitudes, Values = values,
-                Unit = _option.Unit,
-                Depth = context.DepthAxis.HasValue && depthIndex.HasValue ? context.DepthAxis.Value.Values[depthIndex.Value] : (double?)null,
-                DateTime = query.DateTime, Variable = _option.Variable,
-                Minimum = minimum, Maximum = maximum, Metadata = metadata
-            };
+        private static int[] SelectNativeIndices(double[] values, double min, double max, bool descending)
+        {
+            var lower = Math.Min(min, max);
+            var upper = Math.Max(min, max);
+            var selected = Enumerable.Range(0, values.Length)
+                .Where(i => values[i] >= lower && values[i] <= upper);
+            var ordered = descending
+                ? selected.OrderByDescending(i => values[i]).ToArray()
+                : selected.OrderBy(i => values[i]).ToArray();
+
+            if (ordered.Length > 0)
+                return ordered;
+
+            var axisMin = values.Min();
+            var axisMax = values.Max();
+            if (upper < axisMin || lower > axisMax)
+                return Array.Empty<int>();
+
+            var nearest = FindNearestIndex(values, (lower + upper) / 2.0);
+            return new[] { nearest };
         }
 
         private Dictionary<string, object?> CreateMetadata(string filePath, string sampling)
@@ -157,6 +245,18 @@ namespace MarineEnvironment.Sources.NetCdf
             metadata["file"] = filePath;
             metadata["sampling"] = sampling;
             return metadata;
+        }
+
+        private static void AddSourceResolutionMetadata(Dictionary<string, object?> metadata, Axis latitudeAxis, Axis longitudeAxis)
+        {
+            var latSpacing = GetAxisSpacingDegrees(latitudeAxis.Values);
+            var lonSpacing = GetAxisSpacingDegrees(longitudeAxis.Values);
+            metadata["sourceLatitudeCount"] = latitudeAxis.Values.Length;
+            metadata["sourceLongitudeCount"] = longitudeAxis.Values.Length;
+            metadata["sourceLatitudeSpacingDegrees"] = latSpacing;
+            metadata["sourceLongitudeSpacingDegrees"] = lonSpacing;
+            if (latSpacing.HasValue) metadata["sourceLatitudeSpacingArcSeconds"] = latSpacing.Value * 3600.0;
+            if (lonSpacing.HasValue) metadata["sourceLongitudeSpacingArcSeconds"] = lonSpacing.Value * 3600.0;
         }
 
         private ReadContext BuildReadContext(int ncid)
@@ -178,16 +278,68 @@ namespace MarineEnvironment.Sources.NetCdf
             SetAxisIndex(context.DimensionIds, indices, context.LongitudeAxis.DimensionId, lonIndex);
             if (context.DepthAxis.HasValue && depthIndex.HasValue) SetAxisIndex(context.DimensionIds, indices, context.DepthAxis.Value.DimensionId, depthIndex.Value);
             NetCdfNative.ThrowIfError(NetCdfNative.nc_get_var1_double(ncid, context.DataVariableId, indices, out var raw), "Read NetCDF value");
+            return TransformRawValue(ncid, context.DataVariableId, raw);
+        }
 
+        private static DataSlab ReadSlab(int ncid, ReadContext context, int latStart, int latCount, int lonStart, int lonCount, int? depthIndex)
+        {
+            var start = new UIntPtr[context.DimensionIds.Length];
+            var count = new UIntPtr[context.DimensionIds.Length];
+            var counts = new int[context.DimensionIds.Length];
+            for (var i = 0; i < count.Length; i++)
+            {
+                count[i] = (UIntPtr)1u;
+                counts[i] = 1;
+            }
+
+            SetAxisRange(context.DimensionIds, start, count, counts, context.LatitudeAxis.DimensionId, latStart, latCount);
+            SetAxisRange(context.DimensionIds, start, count, counts, context.LongitudeAxis.DimensionId, lonStart, lonCount);
+            if (context.DepthAxis.HasValue && depthIndex.HasValue)
+                SetAxisRange(context.DimensionIds, start, count, counts, context.DepthAxis.Value.DimensionId, depthIndex.Value, 1);
+
+            var total = 1L;
+            for (var i = 0; i < counts.Length; i++) total *= counts[i];
+            var raw = new double[checked((int)total)];
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_get_vara_double(ncid, context.DataVariableId, start, count, raw), "Read NetCDF slab");
+
+            var hasFill = TryGetAttribute(ncid, context.DataVariableId, "_FillValue", out var fill);
+            var hasMissing = TryGetAttribute(ncid, context.DataVariableId, "missing_value", out var missing);
+            var hasScale = TryGetAttribute(ncid, context.DataVariableId, "scale_factor", out var scale);
+            var hasOffset = TryGetAttribute(ncid, context.DataVariableId, "add_offset", out var offset);
+
+            for (var i = 0; i < raw.Length; i++)
+            {
+                var value = raw[i];
+                if (double.IsNaN(value) || double.IsInfinity(value) ||
+                    (hasFill && NearlyEqual(value, fill)) ||
+                    (hasMissing && NearlyEqual(value, missing)))
+                {
+                    raw[i] = double.NaN;
+                    continue;
+                }
+                if (hasScale) value *= scale;
+                if (hasOffset) value += offset;
+                raw[i] = value;
+            }
+
+            return new DataSlab(
+                raw,
+                counts,
+                Array.IndexOf(context.DimensionIds, context.LatitudeAxis.DimensionId),
+                Array.IndexOf(context.DimensionIds, context.LongitudeAxis.DimensionId));
+        }
+
+        private static double? TransformRawValue(int ncid, int varId, double raw)
+        {
             // NetCDF4/GMT grids may use NaN directly as the fill value (Martin et al. 2015
             // porosity is one example). Treat all non-finite raw samples as NoData before
             // attempting numeric fill-value comparisons.
             if (double.IsNaN(raw) || double.IsInfinity(raw)) return null;
-            if (TryGetAttribute(ncid, context.DataVariableId, "_FillValue", out var fill) && NearlyEqual(raw, fill)) return null;
-            if (TryGetAttribute(ncid, context.DataVariableId, "missing_value", out var missing) && NearlyEqual(raw, missing)) return null;
+            if (TryGetAttribute(ncid, varId, "_FillValue", out var fill) && NearlyEqual(raw, fill)) return null;
+            if (TryGetAttribute(ncid, varId, "missing_value", out var missing) && NearlyEqual(raw, missing)) return null;
             var value = raw;
-            if (TryGetAttribute(ncid, context.DataVariableId, "scale_factor", out var scale)) value *= scale;
-            if (TryGetAttribute(ncid, context.DataVariableId, "add_offset", out var offset)) value += offset;
+            if (TryGetAttribute(ncid, varId, "scale_factor", out var scale)) value *= scale;
+            if (TryGetAttribute(ncid, varId, "add_offset", out var offset)) value += offset;
             return value;
         }
 
@@ -243,10 +395,38 @@ namespace MarineEnvironment.Sources.NetCdf
             return longitude;
         }
 
+        private static double ToRequestedLongitudeConvention(double sourceLongitude, double requestedMin, double requestedMax)
+        {
+            if (requestedMin < 0 && requestedMax <= 180 && sourceLongitude > 180) return sourceLongitude - 360;
+            if (requestedMin >= 0 && requestedMax > 180 && sourceLongitude < 0) return sourceLongitude + 360;
+            return sourceLongitude;
+        }
+
+        private static double? GetAxisSpacingDegrees(double[] values)
+        {
+            if (values.Length < 2) return null;
+            for (var i = 1; i < values.Length; i++)
+            {
+                var spacing = Math.Abs(values[i] - values[i - 1]);
+                if (spacing > 0 && !double.IsNaN(spacing) && !double.IsInfinity(spacing)) return spacing;
+            }
+            return null;
+        }
+
         private static void SetAxisIndex(int[] dims, UIntPtr[] indices, int axisDim, int axisIndex)
         {
             var position = Array.IndexOf(dims, axisDim); if (position >= 0) indices[position] = (UIntPtr)(uint)axisIndex;
         }
+
+        private static void SetAxisRange(int[] dims, UIntPtr[] start, UIntPtr[] count, int[] counts, int axisDim, int axisStart, int axisCount)
+        {
+            var position = Array.IndexOf(dims, axisDim);
+            if (position < 0) return;
+            start[position] = (UIntPtr)(uint)axisStart;
+            count[position] = (UIntPtr)(uint)axisCount;
+            counts[position] = axisCount;
+        }
+
         private static bool TryGetAttribute(int ncid, int varId, string name, out double value) => NetCdfNative.nc_get_att_double(ncid, varId, name, out value) == NetCdfNative.NoError;
         private static bool NearlyEqual(double a, double b) => a.Equals(b) || Math.Abs(a - b) <= Math.Max(1e-12, Math.Abs(b) * 1e-12);
         private static void ValidateVariable(int ncid, string variable) => NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(ncid, variable, out _), $"Find variable '{variable}'");
@@ -259,6 +439,7 @@ namespace MarineEnvironment.Sources.NetCdf
             public int DimensionId { get; }
             public double[] Values { get; }
         }
+
         private readonly struct ReadContext
         {
             public ReadContext(int dataVariableId, int[] dimensionIds, Axis latitudeAxis, Axis longitudeAxis, Axis? depthAxis)
@@ -269,6 +450,53 @@ namespace MarineEnvironment.Sources.NetCdf
             public Axis LongitudeAxis { get; }
             public Axis? DepthAxis { get; }
         }
+
+        private readonly struct GridGeometry
+        {
+            public GridGeometry(double[] latitudes, double[] longitudes, int?[] latitudeIndices, int?[] longitudeIndices)
+            {
+                Latitudes = latitudes;
+                Longitudes = longitudes;
+                LatitudeIndices = latitudeIndices;
+                LongitudeIndices = longitudeIndices;
+            }
+            public int Width => Longitudes.Length;
+            public int Height => Latitudes.Length;
+            public double[] Latitudes { get; }
+            public double[] Longitudes { get; }
+            public int?[] LatitudeIndices { get; }
+            public int?[] LongitudeIndices { get; }
+        }
+
+        private sealed class DataSlab
+        {
+            private readonly double[] _values;
+            private readonly int _latitudeStride;
+            private readonly int _longitudeStride;
+
+            public DataSlab(double[] values, int[] counts, int latitudePosition, int longitudePosition)
+            {
+                if (latitudePosition < 0 || longitudePosition < 0)
+                    throw new InvalidDataException("NetCDF data variable does not contain the configured latitude/longitude dimensions.");
+                _values = values;
+                _latitudeStride = CalculateStride(counts, latitudePosition);
+                _longitudeStride = CalculateStride(counts, longitudePosition);
+            }
+
+            public double? Get(int localLatitude, int localLongitude)
+            {
+                var value = _values[(localLatitude * _latitudeStride) + (localLongitude * _longitudeStride)];
+                return double.IsNaN(value) || double.IsInfinity(value) ? (double?)null : value;
+            }
+
+            private static int CalculateStride(int[] counts, int position)
+            {
+                var stride = 1;
+                for (var i = position + 1; i < counts.Length; i++) stride = checked(stride * counts[i]);
+                return stride;
+            }
+        }
+
         private sealed class NetCdfFile : IDisposable
         {
             public NetCdfFile(int id) { Id = id; }
