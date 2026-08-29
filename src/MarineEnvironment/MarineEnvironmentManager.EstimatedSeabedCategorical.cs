@@ -41,16 +41,18 @@ namespace MarineEnvironment
             var rockThreshold = Clamp01(model.RockDecisionThreshold);
             var isRock = rockIndex >= rockThreshold;
 
+            // Martin porosity is not a measured mud fraction. V1 therefore uses only a transparent
+            // regional normalization between the configured low/high porosity anchors. No additional
+            // nonlinear shaping is applied: T=0 at the low anchor and T=1 at the high anchor.
             var porosityT = Normalize(porosityPercent, model.PorosityLowPercent, model.PorosityHighPercent);
-            var mudIndex = SmoothStep(porosityT);
+            var mudIndex = porosityT;
 
             // RockIndex is a terrain-based decision score, not a physical rock fraction.
-            // For sediment cells, the operational model needs only the 50:50 mud/sand end member
-            // through pure mud. Therefore Martin's 0..1 mud tendency is mapped to:
-            // Mud = 50..100%, Sand = 50..0%.
+            // For non-rock sediment cells, map the normalized Martin tendency linearly to the
+            // operational range required by the project: Mud 50..100%, Sand 50..0%.
             var rockPercent = isRock ? 100.0 : 0.0;
             var mudPercent = isRock ? 0.0 : 50.0 + (50.0 * mudIndex);
-            var sandPercent = isRock ? 0.0 : 100.0 - mudPercent;
+            var sandPercent = isRock ? 0.0 : 50.0 - (50.0 * mudIndex);
             var sedimentMudShare = mudPercent / 100.0;
 
             // Existing operational burial anchors are defined against sediment mud share:
@@ -100,12 +102,14 @@ namespace MarineEnvironment
                 ["porosityInterpolation"] = porosityMethod,
                 ["porosityLowPercent"] = model.PorosityLowPercent,
                 ["porosityHighPercent"] = model.PorosityHighPercent,
+                ["porosityNormalizedIndex"] = porosityT,
+                ["porosityNormalizationFormula"] = "T = clamp((P - P_low) / (P_high - P_low), 0, 1)",
                 ["rockIndex"] = rockIndex,
                 ["rockDecisionThreshold"] = rockThreshold,
                 ["isRock"] = isRock,
                 ["rockDecisionFormula"] = "RockIndex = sqrt(SlopeIndex * RoughnessIndex); Rock if RockIndex >= threshold",
-                ["sedimentMudFormula"] = "Mud% = 50 + 50 * smoothstep(PorosityIndex)",
-                ["sedimentSandFormula"] = "Sand% = 100 - Mud%",
+                ["sedimentMudFormula"] = "Mud% = 50 + 50 * T",
+                ["sedimentSandFormula"] = "Sand% = 50 - 50 * T",
                 ["sedimentMudRange"] = "50..100%",
                 ["sedimentSandRange"] = "50..0%",
                 ["burialPolicy"] = "Rock=0%; sediment uses SHOM_OPERATIONAL_COMPAT_V1 mud-share anchors / user-derived, not observed",
