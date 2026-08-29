@@ -6,7 +6,8 @@ namespace MarineEnvironment.Models
     /// <summary>
     /// User-derived/estimated seabed result. ETOPO terrain metrics are used only to decide
     /// rock versus sediment. When sediment is selected, Martin et al. (2015) predicted porosity
-    /// is used to partition the sediment into mud and sand. These values are not observations.
+    /// is regionally normalized and linearly mapped to the project's operational mud/sand range.
+    /// These values are not observed sediment fractions.
     /// </summary>
     public sealed class EstimatedSeabedValue
     {
@@ -32,7 +33,13 @@ namespace MarineEnvironment.Models
         public double BurialRatePercent { get; init; }
 
         public double PorosityPercent { get; init; }
+
+        /// <summary>
+        /// Linear 0..1 Martin porosity index T after clamped regional normalization between
+        /// PorosityLowPercent and PorosityHighPercent. This is a tendency index, not observed mud fraction.
+        /// </summary>
         public double MudIndex { get; init; }
+
         public double SlopeDegrees { get; init; }
         public double RoughnessMeters { get; init; }
 
