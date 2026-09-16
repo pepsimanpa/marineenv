@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/goci2-turbidity-offline ]
   pull_request:
 
 jobs:
