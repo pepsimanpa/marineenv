@@ -26,9 +26,7 @@
       "latitudeVariable": "lat",
       "longitudeVariable": "lon",
       "unit": "m",
-      "metadata": {
-        "dataset": "ETOPO1 1 Arc-Minute Global Relief Model"
-      }
+      "metadata": { "dataset": "ETOPO1 1 Arc-Minute Global Relief Model" }
     },
     {
       "id": "ETOPO2022",
@@ -40,10 +38,7 @@
       "latitudeVariable": "lat",
       "longitudeVariable": "lon",
       "unit": "m",
-      "metadata": {
-        "dataset": "ETOPO 2022 15 arc-second surface elevation",
-        "nativeResolution": "15 arc-second"
-      }
+      "metadata": { "dataset": "ETOPO 2022 15 arc-second surface elevation", "nativeResolution": "15 arc-second" }
     },
     {
       "id": "GEBCO2026",
@@ -89,9 +84,7 @@
       "enabled": false,
       "path": "../Database/FES2014a",
       "currentConstituentMode": "Major4",
-      "metadata": {
-        "dataset": "FES2014a tide currents"
-      }
+      "metadata": { "dataset": "FES2014a tide currents" }
     },
     {
       "id": "KHOA_DAILY_CURRENT",
@@ -107,6 +100,27 @@
         "temporalKey": "검색 시간",
         "temporalMode": "per-point nearest-date composite",
         "nativeGeometry": "irregular/curvilinear point vectors"
+      }
+    },
+    {
+      "id": "GOCI2_TURBIDITY",
+      "type": "Turbidity",
+      "format": "Goci2Tss",
+      "enabled": false,
+      "path": "../Database/GOCI2/TSS",
+      "variable": "TSS",
+      "latitudeVariable": "latitude",
+      "longitudeVariable": "longitude",
+      "unit": "NTU",
+      "metadata": {
+        "dataset": "GK2B GOCI-II Level-2 Local Area TSS mosaics",
+        "sourceProduct": "Total Suspended Solids concentration",
+        "derivedProduct": "Turbidity",
+        "aggregation": "Query-time arithmetic mean of up to five LA mosaic files",
+        "conversion": "Turbidity_NTU = 0.3671 * TSS_mg/L",
+        "conversionModel": "KIOST_GOMSO_TSS_TURBIDITY_LINEAR",
+        "nominalSpatialResolution": "250 m",
+        "note": "For initial validation, place 3-5 original ..._LA_TSS.nc mosaic files in this directory. Invalid quality pixels are excluded; no averaged DB is generated."
       }
     },
     {
@@ -133,9 +147,7 @@
       "path": "../Database/SHOM/SHAPE/CarteSedimMonde_2026.shp",
       "attributeField": "typelem",
       "seabedMappingPath": "./shom.seabed.mapping.example.json",
-      "metadata": {
-        "dataset": "SHOM Worldwide Seabed Sediment Map"
-      }
+      "metadata": { "dataset": "SHOM Worldwide Seabed Sediment Map" }
     }
   ]
 }
