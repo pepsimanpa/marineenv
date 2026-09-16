@@ -12,15 +12,16 @@ namespace MarineEnvironment.Sources.Goci2
     /// <summary>
     /// Offline GOCI-II turbidity source.
     ///
-    /// The source keeps the downloaded GOCI-II L2 LA mosaic TSS files as-is and does not
-    /// build a separate averaged database. For every point/grid query it reads up to five
-    /// mosaic files, filters invalid pixels through Goci2TssDataSource, takes the pixel-wise
-    /// median TSS, and derives turbidity with the project-selected KIOST/Gomso relation:
+    /// Downloaded GOCI-II L2 LA mosaic TSS files are kept as source data; no averaged
+    /// database is generated. At query time this source reads up to five mosaics, lets
+    /// Goci2TssDataSource remove invalid-quality pixels, calculates the arithmetic mean
+    /// of the remaining TSS values, and derives turbidity using the project-selected
+    /// KIOST/Gomso relation:
     ///
     ///     Turbidity [NTU] = 0.3671 * TSS [mg/L]
     ///
-    /// GOCI-II TSS is stored as g/m^3 and 1 g/m^3 = 1 mg/L, so the numeric TSS value can be
-    /// used directly in the relation. The result is derived, not a satellite-observed NTU.
+    /// GOCI-II TSS uses g/m^3 and 1 g/m^3 = 1 mg/L, so its numeric value can be used
+    /// directly in the equation. The NTU result is derived, not satellite-observed NTU.
     /// </summary>
     internal sealed class Goci2TurbidityDataSource : IEnvironmentDataSource
     {
@@ -55,7 +56,10 @@ namespace MarineEnvironment.Sources.Goci2
 
             try
             {
-                _availableFiles = ResolveAvailableFiles(resolvedPath).OrderBy(x => x.ObservationUtc).ToArray();
+                _availableFiles = ResolveAvailableFiles(resolvedPath)
+                    .OrderBy(x => x.ObservationUtc)
+                    .ToArray();
+
                 if (_availableFiles.Length == 0)
                 {
                     Status = SourceStatus.FileNotFound;
@@ -63,7 +67,7 @@ namespace MarineEnvironment.Sources.Goci2
                     return;
                 }
 
-                // Validate one file immediately. Remaining files are opened lazily when selected.
+                // Validate one mosaic immediately; remaining files are opened lazily.
                 var validationReader = GetOrCreateReader(_availableFiles[_availableFiles.Length - 1]);
                 if (validationReader.Status != SourceStatus.Ready)
                 {
@@ -74,7 +78,7 @@ namespace MarineEnvironment.Sources.Goci2
 
                 Status = SourceStatus.Ready;
                 StatusMessage =
-                    $"GOCI-II LA TSS mosaics: {_availableFiles.Length} file(s); query-time median of up to {MaximumAggregationFiles}, " +
+                    $"GOCI-II LA TSS mosaics: {_availableFiles.Length} file(s); query-time mean of up to {MaximumAggregationFiles}, " +
                     $"derived turbidity = {TssToTurbidityFactor.ToString(CultureInfo.InvariantCulture)} x TSS (NTU).";
             }
             catch (DllNotFoundException ex)
@@ -112,7 +116,11 @@ namespace MarineEnvironment.Sources.Goci2
                     continue;
 
                 var raw = reader.Query(query);
-                if (raw?.Value is not double tss || double.IsNaN(tss) || double.IsInfinity(tss))
+                if (raw == null || !(raw.Value is double))
+                    continue;
+
+                var tss = (double)raw.Value;
+                if (double.IsNaN(tss) || double.IsInfinity(tss))
                     continue;
 
                 samples.Add(new TssSample(file, tss));
@@ -121,12 +129,12 @@ namespace MarineEnvironment.Sources.Goci2
             if (samples.Count < MinimumValidObservations)
                 return null;
 
-            var medianTss = Median(samples.Select(x => x.TssGm3).ToArray());
-            var turbidity = medianTss * TssToTurbidityFactor;
+            var meanTss = samples.Average(x => x.TssGm3);
+            var turbidity = meanTss * TssToTurbidityFactor;
             var metadata = CreateDerivedMetadata(selectedFiles, samples.Select(x => x.File).ToArray());
             metadata["tssSamplesGm3"] = samples.Select(x => x.TssGm3).ToArray();
-            metadata["tssMedianGm3"] = medianTss;
-            metadata["tssMedianMgL"] = medianTss;
+            metadata["tssMeanGm3"] = meanTss;
+            metadata["tssMeanMgL"] = meanTss;
             metadata["validObservationCount"] = samples.Count;
 
             return new EnvironmentValue(
@@ -147,6 +155,10 @@ namespace MarineEnvironment.Sources.Goci2
             ThrowIfDisposed();
             if (Status != SourceStatus.Ready)
                 throw new InvalidOperationException($"Source '{Id}' is not ready: {Status} - {StatusMessage}");
+            if (query.Width < 2 || query.Width > 2048)
+                throw new ArgumentOutOfRangeException(nameof(query.Width), "Grid width must be between 2 and 2048.");
+            if (query.Height < 2 || query.Height > 2048)
+                throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
 
             var selectedFiles = SelectFiles(query.DateTime);
             var sourceGrids = new List<GridResult>(selectedFiles.Length);
@@ -172,32 +184,32 @@ namespace MarineEnvironment.Sources.Goci2
 
             if (sourceGrids.Count > 0)
             {
-                var buffer = new double[sourceGrids.Count];
                 for (var i = 0; i < values.Length; i++)
                 {
+                    var sum = 0.0;
                     var count = 0;
                     for (var g = 0; g < sourceGrids.Count; g++)
                     {
                         var value = sourceGrids[g].Values[i];
                         if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
                             continue;
-                        buffer[count++] = value.Value;
+
+                        sum += value.Value;
+                        count++;
                     }
 
                     if (count < MinimumValidObservations)
                         continue;
 
-                    Array.Sort(buffer, 0, count);
-                    var medianTss = MedianFromSorted(buffer, count);
-                    var turbidity = medianTss * TssToTurbidityFactor;
+                    var meanTss = sum / count;
+                    var turbidity = meanTss * TssToTurbidityFactor;
                     values[i] = turbidity;
                     cellsWithValue++;
                     minimum = !minimum.HasValue ? turbidity : Math.Min(minimum.Value, turbidity);
                     maximum = !maximum.HasValue ? turbidity : Math.Max(maximum.Value, turbidity);
                 }
 
-                // All child grids use the requested geographic display geometry, so use one
-                // child's axes to preserve exactly the same sampling geometry as the raw reader.
+                // Each raw reader reprojects to the same requested geographic display grid.
                 latitudes = sourceGrids[0].Latitudes;
                 longitudes = sourceGrids[0].Longitudes;
             }
@@ -246,8 +258,9 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["sourceUnit"] = "g/m^3 (= mg/L)";
             metadata["outputParameter"] = "Turbidity";
             metadata["outputUnit"] = "NTU";
-            metadata["aggregation"] = "Median";
+            metadata["aggregation"] = "ArithmeticMean";
             metadata["aggregationAtQueryTime"] = true;
+            metadata["aggregationNote"] = "Adapted for the offline project: valid TSS observations are averaged at query time; no averaged DB is stored.";
             metadata["maximumAggregationFiles"] = MaximumAggregationFiles;
             metadata["minimumValidObservations"] = MinimumValidObservations;
             metadata["selectedFileCount"] = selectedFiles.Count;
@@ -278,11 +291,13 @@ namespace MarineEnvironment.Sources.Goci2
                 return _availableFiles.ToArray();
 
             if (!requestedDateTime.HasValue)
+            {
                 return _availableFiles
                     .OrderByDescending(x => x.ObservationUtc)
                     .Take(MaximumAggregationFiles)
                     .OrderBy(x => x.ObservationUtc)
                     .ToArray();
+            }
 
             var requestedUtc = ToUtc(requestedDateTime.Value);
             return _availableFiles
@@ -296,7 +311,8 @@ namespace MarineEnvironment.Sources.Goci2
         {
             lock (_readerSync)
             {
-                if (_readers.TryGetValue(file.Path, out var existing))
+                Goci2TssDataSource existing;
+                if (_readers.TryGetValue(file.Path, out existing))
                     return existing;
 
                 var rawOption = new DataSourceOption
@@ -350,12 +366,13 @@ namespace MarineEnvironment.Sources.Goci2
             if (!match.Success)
                 return null;
 
+            DateTime value;
             if (DateTime.TryParseExact(
                 match.Groups["date"].Value + match.Groups["time"].Value,
                 "yyyyMMddHHmmss",
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var value))
+                out value))
                 return value;
             return null;
         }
@@ -375,22 +392,6 @@ namespace MarineEnvironment.Sources.Goci2
             if (delta == long.MinValue)
                 return long.MaxValue;
             return Math.Abs(delta);
-        }
-
-        private static double Median(double[] values)
-        {
-            if (values == null || values.Length == 0)
-                throw new ArgumentException("At least one value is required.", nameof(values));
-            Array.Sort(values);
-            return MedianFromSorted(values, values.Length);
-        }
-
-        private static double MedianFromSorted(double[] values, int count)
-        {
-            var middle = count / 2;
-            return (count & 1) == 1
-                ? values[middle]
-                : (values[middle - 1] + values[middle]) * 0.5;
         }
 
         private static double[] BuildDescendingAxis(double max, double min, int count)
@@ -424,6 +425,7 @@ namespace MarineEnvironment.Sources.Goci2
             {
                 if (_disposed)
                     return;
+
                 foreach (var reader in _readers.Values)
                     reader.Dispose();
                 _readers.Clear();
