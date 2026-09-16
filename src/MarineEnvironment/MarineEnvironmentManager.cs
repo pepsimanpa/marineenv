@@ -6,6 +6,7 @@ using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
 using MarineEnvironment.Sources.Fes2014;
+using MarineEnvironment.Sources.Goci2;
 using MarineEnvironment.Sources.Khoa;
 using MarineEnvironment.Sources.NetCdf;
 using MarineEnvironment.Sources.Shom;
@@ -47,10 +48,8 @@ namespace MarineEnvironment
 
         public SourceState LoadSource(DataSourceOption option)
         {
-            if (option == null)
-                throw new ArgumentNullException(nameof(option));
+            if (option == null) throw new ArgumentNullException(nameof(option));
             ThrowIfDisposed();
-
             var resolvedPath = Path.GetFullPath(option.Path);
             var resolvedMappingPath = string.IsNullOrWhiteSpace(option.SeabedMappingPath)
                 ? null
@@ -64,15 +63,12 @@ namespace MarineEnvironment
 
         public bool UnloadSource(string sourceId)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
+            if (string.IsNullOrWhiteSpace(sourceId)) throw new ArgumentException("Source id is required.", nameof(sourceId));
             ThrowIfDisposed();
-
             lock (_sync)
             {
                 IEnvironmentDataSource source;
-                if (!_sources.TryGetValue(sourceId, out source))
-                    return false;
+                if (!_sources.TryGetValue(sourceId, out source)) return false;
                 _sources.Remove(sourceId);
                 _seabedMappings.Remove(sourceId);
                 source.Dispose();
@@ -81,22 +77,17 @@ namespace MarineEnvironment
             }
         }
 
-        public SourceState ReloadSource(DataSourceOption option)
-        {
-            return LoadSource(option);
-        }
+        public SourceState ReloadSource(DataSourceOption option) => LoadSource(option);
 
         public IReadOnlyList<SourceState> GetSources()
         {
             ThrowIfDisposed();
-            lock (_sync)
-                return _sources.Values.Select(ToState).OrderBy(x => x.Id).ToArray();
+            lock (_sync) return _sources.Values.Select(ToState).OrderBy(x => x.Id).ToArray();
         }
 
         public SourceState? GetSourceStatus(string sourceId)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
+            if (string.IsNullOrWhiteSpace(sourceId)) throw new ArgumentException("Source id is required.", nameof(sourceId));
             ThrowIfDisposed();
             lock (_sync)
             {
@@ -107,8 +98,7 @@ namespace MarineEnvironment
 
         public EnvironmentQueryResult Query(EnvironmentQuery query)
         {
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
+            if (query == null) throw new ArgumentNullException(nameof(query));
             ValidateQuery(query);
             ThrowIfDisposed();
 
@@ -124,12 +114,10 @@ namespace MarineEnvironment
             foreach (var source in sourceSnapshot)
             {
                 var value = source.Query(query);
-                if (value != null)
-                    values.Add(ApplySeabedMapping(value, mappingSnapshot));
+                if (value != null) values.Add(ApplySeabedMapping(value, mappingSnapshot));
             }
 
             AppendEstimatedSeabedCategorical(values, sourceSnapshot, query);
-
             return new EnvironmentQueryResult
             {
                 RequestedLatitude = query.Latitude,
@@ -143,51 +131,36 @@ namespace MarineEnvironment
 
         public EnvironmentValue? Query(string sourceId, EnvironmentQuery query)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
+            if (string.IsNullOrWhiteSpace(sourceId)) throw new ArgumentException("Source id is required.", nameof(sourceId));
+            if (query == null) throw new ArgumentNullException(nameof(query));
             ValidateQuery(query);
             ThrowIfDisposed();
 
             var value = GetReadySource(sourceId).Query(query);
-            if (value == null)
-                return null;
+            if (value == null) return null;
 
             SeabedMappingLookup? mapping;
-            lock (_sync)
-                _seabedMappings.TryGetValue(sourceId, out mapping);
+            lock (_sync) _seabedMappings.TryGetValue(sourceId, out mapping);
+            if (mapping == null) return value;
 
-            if (mapping == null)
-                return value;
-
-            var one = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase)
-            {
-                [sourceId] = mapping
-            };
+            var one = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase) { [sourceId] = mapping };
             return ApplySeabedMapping(value, one);
         }
 
         public GridResult QueryGrid(string sourceId, GridQuery query)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
+            if (string.IsNullOrWhiteSpace(sourceId)) throw new ArgumentException("Source id is required.", nameof(sourceId));
+            if (query == null) throw new ArgumentNullException(nameof(query));
             ValidateGridQuery(query);
             ThrowIfDisposed();
-
             return GetReadySource(sourceId).QueryGrid(query);
         }
 
         private static EnvironmentValue ApplySeabedMapping(EnvironmentValue value, IReadOnlyDictionary<string, SeabedMappingLookup> mappings)
         {
-            if (!(value.Value is SeabedValue seabed))
-                return value;
-            if (!mappings.TryGetValue(value.SourceId, out var mapping))
-                return value;
-            if (!mapping.TryGet(seabed.Code, out var rule))
-                return value;
+            if (!(value.Value is SeabedValue seabed)) return value;
+            if (!mappings.TryGetValue(value.SourceId, out var mapping)) return value;
+            if (!mapping.TryGet(seabed.Code, out var rule)) return value;
 
             var derived = new SeabedDerivedValue
             {
@@ -219,7 +192,6 @@ namespace MarineEnvironment
             metadata["derivedMudPercent"] = derived.MudPercent;
             metadata["derivedSandPercent"] = derived.SandPercent;
             metadata["derivedBurialRatePercent"] = derived.BurialRatePercent;
-
             return value with { Value = enriched, Metadata = metadata };
         }
 
@@ -231,7 +203,6 @@ namespace MarineEnvironment
                 if (!_sources.TryGetValue(sourceId, out source))
                     throw new KeyNotFoundException($"MarineEnvironment source '{sourceId}' is not registered.");
             }
-
             if (source.Status != SourceStatus.Ready)
                 throw new InvalidOperationException($"Source '{sourceId}' is not ready: {source.Status} - {source.StatusMessage}");
             return source;
@@ -239,8 +210,7 @@ namespace MarineEnvironment
 
         private void AddOrReplaceSource(DataSourceOption option, string resolvedPath, string? resolvedMappingPath)
         {
-            if (string.IsNullOrWhiteSpace(option.Id))
-                throw new ArgumentException("A data source id is required.", nameof(option));
+            if (string.IsNullOrWhiteSpace(option.Id)) throw new ArgumentException("A data source id is required.", nameof(option));
             if (option.Format == DataSourceFormat.NetCdf && string.IsNullOrWhiteSpace(option.Variable))
                 throw new ArgumentException($"NetCDF data source '{option.Id}' requires a variable name.", nameof(option));
             if (option.Format == DataSourceFormat.Fes2014Current && option.Type != EnvironmentType.Current)
@@ -249,11 +219,12 @@ namespace MarineEnvironment
                 throw new ArgumentException($"KHOA daily-current CSV source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
+            if (option.Format == DataSourceFormat.Goci2Tss && option.Type != EnvironmentType.Turbidity)
+                throw new ArgumentException($"GOCI-II TSS-derived source '{option.Id}' must use type Turbidity.", nameof(option));
             if (!string.IsNullOrWhiteSpace(option.SeabedMappingPath) && option.Format != DataSourceFormat.ShomSeabed)
                 throw new ArgumentException($"seabedMappingPath is currently supported only by ShomSeabed sources ('{option.Id}').", nameof(option));
 
             var mapping = resolvedMappingPath == null ? null : SeabedMappingTableLoader.Load(resolvedMappingPath);
-
             IEnvironmentDataSource existing;
             if (_sources.TryGetValue(option.Id, out existing))
             {
@@ -277,28 +248,24 @@ namespace MarineEnvironment
                 case DataSourceFormat.ShomSeabed:
                     source = new ShomSeabedDataSource(option, resolvedPath);
                     break;
+                case DataSourceFormat.Goci2Tss:
+                    source = new Goci2TurbidityDataSource(option, resolvedPath);
+                    break;
                 default:
                     throw new NotSupportedException($"Data format '{option.Format}' is not supported yet.");
             }
 
             _sources.Add(option.Id, source);
-            if (mapping != null)
-                _seabedMappings[option.Id] = mapping;
+            if (mapping != null) _seabedMappings[option.Id] = mapping;
             ResetEstimatedSeabedCalibration();
         }
 
         private InitializationResult SnapshotInitializationResult()
         {
-            return new InitializationResult
-            {
-                Sources = _sources.Values.Select(ToState).OrderBy(x => x.Id).ToArray()
-            };
+            return new InitializationResult { Sources = _sources.Values.Select(ToState).OrderBy(x => x.Id).ToArray() };
         }
 
-        private static SourceState ToState(IEnvironmentDataSource source)
-        {
-            return new SourceState(source.Id, source.Type, source.Status, source.StatusMessage);
-        }
+        private static SourceState ToState(IEnvironmentDataSource source) => new SourceState(source.Id, source.Type, source.Status, source.StatusMessage);
 
         private static void ValidateQuery(EnvironmentQuery query)
         {
@@ -322,14 +289,12 @@ namespace MarineEnvironment
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(MarineEnvironmentManager));
+            if (_disposed) throw new ObjectDisposedException(nameof(MarineEnvironmentManager));
         }
 
         private void ClearSources()
         {
-            foreach (var source in _sources.Values)
-                source.Dispose();
+            foreach (var source in _sources.Values) source.Dispose();
             _sources.Clear();
             _seabedMappings.Clear();
             ResetEstimatedSeabedCalibration();
@@ -337,13 +302,10 @@ namespace MarineEnvironment
 
         public void Dispose()
         {
-            if (_disposed)
-                return;
-
+            if (_disposed) return;
             lock (_sync)
             {
-                if (_disposed)
-                    return;
+                if (_disposed) return;
                 ClearSources();
                 _disposed = true;
             }
