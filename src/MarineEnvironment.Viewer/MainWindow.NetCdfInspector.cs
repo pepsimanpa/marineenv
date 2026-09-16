@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,12 +7,6 @@ namespace MarineEnvironment.Viewer
     public partial class MainWindow
     {
         private bool _netCdfInspectorButtonAdded;
-
-        protected override void OnContentRendered(EventArgs e)
-        {
-            base.OnContentRendered(e);
-            AddNetCdfInspectorButton();
-        }
 
         private void AddNetCdfInspectorButton()
         {
