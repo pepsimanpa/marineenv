@@ -46,6 +46,8 @@ At query time it:
 4. calculates the arithmetic mean of the remaining TSS observations,
 5. derives turbidity with the project-selected relation `Turbidity_NTU = 0.3671 * TSS_mg/L`.
 
+The arithmetic-mean approach is consistent with the project use case and is also aligned with a KIOST technical-report workflow that formed representative GOCI-II TSS values by averaging multiple observations. Our initial validation intentionally uses only 3-5 downloaded mosaics, so it must be described as a sampled representative value rather than a full monthly/annual climatology.
+
 GOCI-II TSS is `g/m^3`, which is numerically equal to `mg/L`. The resulting NTU is therefore a **derived project value**, not a direct GOCI-II turbidity observation. Metadata records the selected/used files, TSS samples, mean TSS, quality filtering, conversion factor, and the site-specific scope of the selected Gomso Bay relation.
 
 Example configuration:
