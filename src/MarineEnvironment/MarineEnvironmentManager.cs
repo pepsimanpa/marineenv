@@ -6,6 +6,7 @@ using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
 using MarineEnvironment.Sources.Fes2014;
+using MarineEnvironment.Sources.Goci2;
 using MarineEnvironment.Sources.NetCdf;
 using MarineEnvironment.Sources.Shom;
 
@@ -246,6 +247,8 @@ namespace MarineEnvironment
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
+            if (option.Format == DataSourceFormat.Goci2Tss && option.Type != EnvironmentType.Turbidity)
+                throw new ArgumentException($"GOCI-II TSS source '{option.Id}' must use type Turbidity (TSS concentration is retained in metadata and unit).", nameof(option));
             if (!string.IsNullOrWhiteSpace(option.SeabedMappingPath) && option.Format != DataSourceFormat.ShomSeabed)
                 throw new ArgumentException($"seabedMappingPath is currently supported only by ShomSeabed sources ('{option.Id}').", nameof(option));
 
@@ -270,6 +273,9 @@ namespace MarineEnvironment
                     break;
                 case DataSourceFormat.ShomSeabed:
                     source = new ShomSeabedDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.Goci2Tss:
+                    source = new Goci2TssDataSource(option, resolvedPath);
                     break;
                 default:
                     throw new NotSupportedException($"Data format '{option.Format}' is not supported yet.");
