@@ -116,8 +116,6 @@ namespace MarineEnvironment.Sources.Khoa
 
             var day = (query.DateTime ?? DateTime.Today).Date;
             var data = GetDayData(day);
-            if (data.Points.Count == 0)
-                throw new InvalidOperationException($"KHOA daily-current source '{Id}' has no records for {day:yyyy-MM-dd}.");
 
             // The published CSV is an irregular/curvilinear point set, not a regular lat/lon raster.
             // Both SourceNative and Custom therefore use a display raster sampled from the native points.
@@ -134,6 +132,34 @@ namespace MarineEnvironment.Sources.Khoa
             {
                 var t = column / (double)(width - 1);
                 longitudes[column] = query.MinLongitude + ((query.MaxLongitude - query.MinLongitude) * t);
+            }
+
+            if (data.Points.Count == 0)
+            {
+                var noDataMetadata = CreateMetadata(data);
+                noDataMetadata["resolutionMode"] = "DisplayRaster";
+                noDataMetadata["requestedResolutionMode"] = query.ResolutionMode.ToString();
+                noDataMetadata["displayRasterWidth"] = width;
+                noDataMetadata["displayRasterHeight"] = height;
+                noDataMetadata["noDataReason"] = $"No source records for {day:yyyy-MM-dd}.";
+
+                return new GridResult
+                {
+                    SourceId = Id,
+                    Type = EnvironmentType.Current,
+                    Width = width,
+                    Height = height,
+                    Latitudes = latitudes,
+                    Longitudes = longitudes,
+                    Values = new double?[checked(width * height)],
+                    Directions = new double?[checked(width * height)],
+                    Unit = "m/s",
+                    DateTime = day,
+                    Variable = "KHOA daily numerical tidal-current speed",
+                    Minimum = null,
+                    Maximum = null,
+                    Metadata = noDataMetadata
+                };
             }
 
             var values = new double?[checked(width * height)];
