@@ -23,7 +23,8 @@ namespace MarineEnvironment.Models
     {
         NetCdf,
         Fes2014Current,
-        ShomSeabed
+        ShomSeabed,
+        Goci2Tss
     }
 
     public enum SourceStatus
