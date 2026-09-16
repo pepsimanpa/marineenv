@@ -111,7 +111,7 @@
         "conversion": "Turbidity_NTU = 0.3671 * TSS_mg/L",
         "conversionModel": "KIOST_GOMSO_TSS_TURBIDITY_LINEAR",
         "nominalSpatialResolution": "250 m",
-        "note": "Keeps original ..._LA_TSS.nc files. Invalid quality pixels are excluded; no averaged DB is generated."
+        "note": "For initial validation, place 3-5 original ..._LA_TSS.nc mosaic files in this directory. Invalid quality pixels are excluded; no averaged DB is generated."
       }
     },
     {
