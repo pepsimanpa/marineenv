@@ -11,8 +11,8 @@ namespace MarineEnvironment.Sources.Khoa
     /// <summary>
     /// Reads the Ministry of Oceans and Fisheries / KHOA numerical tidal-current CSV archive.
     /// The public yearly files are not guaranteed to be date ordered and a single search date
-    /// may cover only part of the overall point set. This reader therefore indexes each native
-    /// coordinate as a time series and composes a requested day from the nearest available
+    /// may cover only part of the overall point set. This reader therefore indexes each physical
+    /// source point as a time series and composes a requested day from the nearest available
     /// record at each point within a configurable temporal tolerance.
     /// </summary>
     internal sealed class KhoaDailyCurrentCsvDataSource : IEnvironmentDataSource
@@ -20,17 +20,26 @@ namespace MarineEnvironment.Sources.Khoa
         private const int MaxCachedYears = 2;
         private const int MaxCachedComposites = 6;
         private const double BucketSizeDegrees = 0.25;
+        private const double CanonicalPointToleranceMeters = 5.0;
+        private const double CanonicalPointToleranceKm = CanonicalPointToleranceMeters / 1000.0;
 
         private readonly DataSourceOption _option;
         private readonly string _rootPath;
         private readonly string _filePattern;
         private readonly Dictionary<int, string> _yearFiles = new Dictionary<int, string>();
         private readonly object _cacheSync = new object();
+        private readonly object _canonicalSync = new object();
 
         private readonly Dictionary<int, YearIndex> _yearCache = new Dictionary<int, YearIndex>();
         private readonly LinkedList<int> _yearCacheLru = new LinkedList<int>();
         private readonly Dictionary<DateTime, CompositeData> _compositeCache = new Dictionary<DateTime, CompositeData>();
         private readonly LinkedList<DateTime> _compositeCacheLru = new LinkedList<DateTime>();
+
+        private readonly List<CanonicalPoint> _canonicalPoints = new List<CanonicalPoint>();
+        private readonly Dictionary<(double Latitude, double Longitude), int> _rawCoordinateToCanonical
+            = new Dictionary<(double Latitude, double Longitude), int>();
+        private bool _canonicalCatalogInitialized;
+        private int _ambiguousCanonicalMatchCount;
 
         private readonly double _maxNearestDistanceKm;
         private readonly int _maxTemporalOffsetDays;
@@ -68,7 +77,7 @@ namespace MarineEnvironment.Sources.Khoa
                 var maxYear = _yearFiles.Keys.Max();
                 Status = SourceStatus.Ready;
                 StatusMessage =
-                    $"{_yearFiles.Count} yearly CSV file(s), {minYear}-{maxYear} / per-point nearest-date composite ±{_maxTemporalOffsetDays} day(s)";
+                    $"{_yearFiles.Count} yearly CSV file(s), {minYear}-{maxYear} / per-point nearest-date composite ±{_maxTemporalOffsetDays} day(s) / canonical identity {CanonicalPointToleranceMeters:0.#} m";
             }
             catch (FileNotFoundException ex)
             {
@@ -134,7 +143,7 @@ namespace MarineEnvironment.Sources.Khoa
 
             // The public KHOA data is an irregular/curvilinear point set rather than a regular
             // lat/lon raster. Values are therefore sampled to a display raster, while CurrentVectors
-            // retains the actual source-point locations so the viewer can place arrows honestly.
+            // retains the actual selected source-record coordinates so the viewer can place arrows honestly.
             var width = query.Width;
             var height = query.Height;
             var latitudes = new double[height];
@@ -231,6 +240,14 @@ namespace MarineEnvironment.Sources.Khoa
                 _compositeCache.Clear();
                 _compositeCacheLru.Clear();
             }
+
+            lock (_canonicalSync)
+            {
+                _canonicalPoints.Clear();
+                _rawCoordinateToCanonical.Clear();
+                _canonicalCatalogInitialized = false;
+                _ambiguousCanonicalMatchCount = 0;
+            }
         }
 
         private void DiscoverYearFiles()
@@ -302,24 +319,26 @@ namespace MarineEnvironment.Sources.Khoa
             if (indexes.Count == 0)
                 return CompositeData.Empty(requestedDay, _maxTemporalOffsetDays);
 
-            var canonicalKeys = new HashSet<(long Lat, long Lon)>();
-            var selected = new Dictionary<(long Lat, long Lon), SelectedPoint>();
+            var canonicalIds = new HashSet<int>();
+            var selected = new Dictionary<int, TemporalSample>();
+            var coordinateVariants = new HashSet<(double Latitude, double Longitude)>();
 
             foreach (var index in indexes)
             {
+                coordinateVariants.UnionWith(index.CoordinateVariants);
+
                 foreach (var pair in index.SeriesByPoint)
                 {
-                    canonicalKeys.Add(pair.Key);
+                    canonicalIds.Add(pair.Key);
 
                     var sample = pair.Value.FindNearest(requestedDay, _maxTemporalOffsetDays);
                     if (!sample.HasValue)
                         continue;
 
-                    var candidate = new SelectedPoint(pair.Value.Latitude, pair.Value.Longitude, sample.Value);
                     if (!selected.TryGetValue(pair.Key, out var existing)
-                        || IsBetterSample(candidate.Sample, existing.Sample, requestedDay))
+                        || IsBetterSample(sample.Value, existing, requestedDay))
                     {
-                        selected[pair.Key] = candidate;
+                        selected[pair.Key] = sample.Value;
                     }
                 }
             }
@@ -328,25 +347,26 @@ namespace MarineEnvironment.Sources.Khoa
                 .Select(x => new CurrentPoint(
                     x.Latitude,
                     x.Longitude,
-                    x.Sample.SpeedMetersPerSecond,
-                    x.Sample.DirectionDegrees,
-                    x.Sample.Date,
-                    Math.Abs((x.Sample.Date - requestedDay).Days)))
+                    x.SpeedMetersPerSecond,
+                    x.DirectionDegrees,
+                    x.Date,
+                    Math.Abs((x.Date - requestedDay).Days)))
                 .ToList();
 
-            var sourceFiles = indexes.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var sourceFiles = indexes
+                .Select(x => x.Path)
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             var skippedRows = indexes.Sum(x => x.SkippedRows);
             var parsedRows = indexes.Sum(x => x.ParsedRows);
-            var approximateSpacingKm = EstimateApproximateSpacing(
-                indexes.SelectMany(x => x.SeriesByPoint.Values)
-                    .GroupBy(x => (ToCoordinateKey(x.Latitude), ToCoordinateKey(x.Longitude)))
-                    .Select(x => new CoordinatePoint(x.First().Latitude, x.First().Longitude))
-                    .ToList());
+            var approximateSpacingKm = EstimateApproximateSpacing(GetCanonicalCoordinates(canonicalIds));
 
             return new CompositeData(
                 requestedDay,
                 points,
-                canonicalKeys.Count,
+                canonicalIds.Count,
+                coordinateVariants.Count,
                 parsedRows,
                 skippedRows,
                 sourceFiles,
@@ -386,27 +406,17 @@ namespace MarineEnvironment.Sources.Khoa
             if (!_yearFiles.TryGetValue(year, out var path))
                 return YearIndex.Empty(year);
 
+            EnsureCanonicalCatalogInitialized();
+
             using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
             var headerLine = reader.ReadLine();
             if (headerLine == null)
-                return new YearIndex(year, path, new Dictionary<(long Lat, long Lon), PointSeries>(), 0, 0);
+                return YearIndex.Empty(year, path);
 
-            var header = SplitCsvLine(headerLine);
-            var dateIndex = FindHeaderIndex(header, "검색 시간", "검색시간");
-            var longitudeIndex = FindHeaderIndex(header, "지점경도");
-            var latitudeIndex = FindHeaderIndex(header, "지점위도");
-            var speedIndex = FindHeaderIndex(header, "유속(cm_s)", "유속");
-            var directionIndex = FindHeaderIndex(header, "유향");
-
-            // Public-file schema fallback documented by data.go.kr/KHOA.
-            if (dateIndex < 0) dateIndex = 0;
-            if (longitudeIndex < 0) longitudeIndex = 5;
-            if (latitudeIndex < 0) latitudeIndex = 6;
-            if (speedIndex < 0) speedIndex = 7;
-            if (directionIndex < 0) directionIndex = 8;
-
-            var requiredIndex = new[] { dateIndex, longitudeIndex, latitudeIndex, speedIndex, directionIndex }.Max();
-            var seriesByPoint = new Dictionary<(long Lat, long Lon), PointSeries>();
+            var layout = ResolveCsvLayout(SplitCsvLine(headerLine));
+            var seriesByPoint = new Dictionary<int, PointSeries>();
+            var coordinateVariants = new HashSet<(double Latitude, double Longitude)>();
+            var localCanonicalByRaw = new Dictionary<(double Latitude, double Longitude), int>();
             var parsedRows = 0;
             var skippedRows = 0;
             string? line;
@@ -417,17 +427,17 @@ namespace MarineEnvironment.Sources.Khoa
                     continue;
 
                 var fields = SplitCsvLine(line);
-                if (fields.Length <= requiredIndex)
+                if (fields.Length <= layout.RequiredIndex)
                 {
                     skippedRows++;
                     continue;
                 }
 
-                if (!TryParseSourceDate(fields[dateIndex], out var rowDate)
-                    || !TryParseDouble(fields[longitudeIndex], out var longitude)
-                    || !TryParseDouble(fields[latitudeIndex], out var latitude)
-                    || !TryParseDouble(fields[speedIndex], out var speedCmPerSecond)
-                    || !TryParseDouble(fields[directionIndex], out var direction))
+                if (!TryParseSourceDate(fields[layout.DateIndex], out var rowDate)
+                    || !TryParseDouble(fields[layout.LongitudeIndex], out var longitude)
+                    || !TryParseDouble(fields[layout.LatitudeIndex], out var latitude)
+                    || !TryParseDouble(fields[layout.SpeedIndex], out var speedCmPerSecond)
+                    || !TryParseDouble(fields[layout.DirectionIndex], out var direction))
                 {
                     skippedRows++;
                     continue;
@@ -443,22 +453,171 @@ namespace MarineEnvironment.Sources.Khoa
 
                 rowDate = rowDate.Date;
                 direction = NormalizeDirection(direction);
-                var key = (ToCoordinateKey(latitude), ToCoordinateKey(longitude));
+                var rawCoordinate = (Latitude: latitude, Longitude: longitude);
+                coordinateVariants.Add(rawCoordinate);
 
-                if (!seriesByPoint.TryGetValue(key, out var series))
+                if (!localCanonicalByRaw.TryGetValue(rawCoordinate, out var canonicalId))
                 {
-                    series = new PointSeries(latitude, longitude);
-                    seriesByPoint[key] = series;
+                    canonicalId = ResolveCanonicalPoint(latitude, longitude);
+                    localCanonicalByRaw[rawCoordinate] = canonicalId;
                 }
 
-                series.Samples.Add(new TemporalSample(rowDate, speedCmPerSecond / 100.0, direction));
+                if (!seriesByPoint.TryGetValue(canonicalId, out var series))
+                {
+                    var canonical = GetCanonicalPoint(canonicalId);
+                    series = new PointSeries(canonicalId, canonical.Latitude, canonical.Longitude);
+                    seriesByPoint[canonicalId] = series;
+                }
+
+                series.Samples.Add(new TemporalSample(
+                    rowDate,
+                    latitude,
+                    longitude,
+                    speedCmPerSecond / 100.0,
+                    direction));
                 parsedRows++;
             }
 
             foreach (var series in seriesByPoint.Values)
                 series.Sort();
 
-            return new YearIndex(year, path, seriesByPoint, parsedRows, skippedRows);
+            return new YearIndex(year, path, seriesByPoint, coordinateVariants, parsedRows, skippedRows);
+        }
+
+        private void EnsureCanonicalCatalogInitialized()
+        {
+            lock (_canonicalSync)
+            {
+                if (_canonicalCatalogInitialized)
+                    return;
+
+                var baseYear = _yearFiles.Keys.Min();
+                var path = _yearFiles[baseYear];
+                var coordinates = ReadUniqueCoordinates(path);
+                coordinates.Sort((a, b) =>
+                {
+                    var latitudeComparison = a.Latitude.CompareTo(b.Latitude);
+                    return latitudeComparison != 0
+                        ? latitudeComparison
+                        : a.Longitude.CompareTo(b.Longitude);
+                });
+
+                foreach (var coordinate in coordinates)
+                    ResolveCanonicalPointCore(coordinate.Latitude, coordinate.Longitude);
+
+                _canonicalCatalogInitialized = true;
+            }
+        }
+
+        private List<CoordinatePoint> ReadUniqueCoordinates(string path)
+        {
+            using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
+            var headerLine = reader.ReadLine();
+            if (headerLine == null)
+                return new List<CoordinatePoint>();
+
+            var layout = ResolveCsvLayout(SplitCsvLine(headerLine));
+            var unique = new HashSet<(double Latitude, double Longitude)>();
+            string? line;
+
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                var fields = SplitCsvLine(line);
+                if (fields.Length <= layout.RequiredIndex)
+                    continue;
+
+                if (!TryParseDouble(fields[layout.LongitudeIndex], out var longitude)
+                    || !TryParseDouble(fields[layout.LatitudeIndex], out var latitude))
+                {
+                    continue;
+                }
+
+                if (latitude < -90 || latitude > 90 || longitude < -360 || longitude > 360)
+                    continue;
+
+                unique.Add((latitude, longitude));
+            }
+
+            return unique.Select(x => new CoordinatePoint(x.Latitude, x.Longitude)).ToList();
+        }
+
+        private int ResolveCanonicalPoint(double latitude, double longitude)
+        {
+            EnsureCanonicalCatalogInitialized();
+            lock (_canonicalSync)
+            {
+                return ResolveCanonicalPointCore(latitude, longitude);
+            }
+        }
+
+        private int ResolveCanonicalPointCore(double latitude, double longitude)
+        {
+            var rawCoordinate = (Latitude: latitude, Longitude: longitude);
+            if (_rawCoordinateToCanonical.TryGetValue(rawCoordinate, out var cached))
+                return cached;
+
+            var bestId = -1;
+            var bestDistanceKm = double.MaxValue;
+            var candidateCount = 0;
+
+            for (var i = 0; i < _canonicalPoints.Count; i++)
+            {
+                var candidate = _canonicalPoints[i];
+                var distanceKm = HaversineKilometers(
+                    latitude,
+                    longitude,
+                    candidate.Latitude,
+                    candidate.Longitude);
+
+                if (distanceKm > CanonicalPointToleranceKm)
+                    continue;
+
+                candidateCount++;
+                if (distanceKm < bestDistanceKm)
+                {
+                    bestDistanceKm = distanceKm;
+                    bestId = candidate.Id;
+                }
+            }
+
+            if (bestId < 0)
+            {
+                bestId = _canonicalPoints.Count;
+                _canonicalPoints.Add(new CanonicalPoint(bestId, latitude, longitude));
+            }
+            else if (candidateCount > 1)
+            {
+                _ambiguousCanonicalMatchCount++;
+            }
+
+            _rawCoordinateToCanonical[rawCoordinate] = bestId;
+            return bestId;
+        }
+
+        private CanonicalPoint GetCanonicalPoint(int id)
+        {
+            lock (_canonicalSync)
+            {
+                if ((uint)id >= (uint)_canonicalPoints.Count)
+                    throw new ArgumentOutOfRangeException(nameof(id));
+                return _canonicalPoints[id];
+            }
+        }
+
+        private List<CoordinatePoint> GetCanonicalCoordinates(IEnumerable<int> ids)
+        {
+            lock (_canonicalSync)
+            {
+                return ids
+                    .Where(id => (uint)id < (uint)_canonicalPoints.Count)
+                    .Select(id => new CoordinatePoint(
+                        _canonicalPoints[id].Latitude,
+                        _canonicalPoints[id].Longitude))
+                    .ToList();
+            }
         }
 
         private Dictionary<string, object?> CreateMetadata(CompositeData data)
@@ -483,6 +642,8 @@ namespace MarineEnvironment.Sources.Khoa
             metadata["directionConventionAssumed"] = true;
             metadata["sourcePointCount"] = data.Points.Count;
             metadata["canonicalPointCount"] = data.CanonicalPointCount;
+            metadata["canonicalPointToleranceMeters"] = CanonicalPointToleranceMeters;
+            metadata["sourceCoordinateVariantCount"] = data.SourceCoordinateVariantCount;
             metadata["coveragePercent"] = data.CoveragePercent;
             metadata["medianTemporalOffsetDays"] = data.MedianTemporalOffsetDays;
             metadata["maximumTemporalOffsetDaysUsed"] = data.MaximumTemporalOffsetDaysUsed;
@@ -495,6 +656,10 @@ namespace MarineEnvironment.Sources.Khoa
             metadata["maxNearestDistanceKm"] = _maxNearestDistanceKm;
             metadata["parsedRowsInIndexedYears"] = data.ParsedRows;
             metadata["skippedRowsInIndexedYears"] = data.SkippedRows;
+            lock (_canonicalSync)
+            {
+                metadata["canonicalAmbiguousMatchCount"] = _ambiguousCanonicalMatchCount;
+            }
             return metadata;
         }
 
@@ -570,6 +735,29 @@ namespace MarineEnvironment.Sources.Khoa
                 out value);
         }
 
+        private static CsvLayout ResolveCsvLayout(string[] header)
+        {
+            var dateIndex = FindHeaderIndex(header, "검색 시간", "검색시간");
+            var longitudeIndex = FindHeaderIndex(header, "지점경도");
+            var latitudeIndex = FindHeaderIndex(header, "지점위도");
+            var speedIndex = FindHeaderIndex(header, "유속(cm_s)", "유속");
+            var directionIndex = FindHeaderIndex(header, "유향");
+
+            // Public-file schema fallback documented by data.go.kr/KHOA.
+            if (dateIndex < 0) dateIndex = 0;
+            if (longitudeIndex < 0) longitudeIndex = 5;
+            if (latitudeIndex < 0) latitudeIndex = 6;
+            if (speedIndex < 0) speedIndex = 7;
+            if (directionIndex < 0) directionIndex = 8;
+
+            return new CsvLayout(
+                dateIndex,
+                longitudeIndex,
+                latitudeIndex,
+                speedIndex,
+                directionIndex);
+        }
+
         private static int FindHeaderIndex(string[] header, params string[] candidates)
         {
             for (var i = 0; i < header.Length; i++)
@@ -634,11 +822,6 @@ namespace MarineEnvironment.Sources.Khoa
         {
             direction %= 360.0;
             return direction < 0 ? direction + 360.0 : direction;
-        }
-
-        private static long ToCoordinateKey(double coordinate)
-        {
-            return (long)Math.Round(coordinate * 1_000_000.0, MidpointRounding.AwayFromZero);
         }
 
         private static double HaversineKilometers(double lat1, double lon1, double lat2, double lon2)
@@ -707,6 +890,7 @@ namespace MarineEnvironment.Sources.Khoa
                 DateTime requestedDate,
                 List<CurrentPoint> points,
                 int canonicalPointCount,
+                int sourceCoordinateVariantCount,
                 int parsedRows,
                 int skippedRows,
                 string[] sourceFiles,
@@ -716,6 +900,7 @@ namespace MarineEnvironment.Sources.Khoa
                 RequestedDate = requestedDate.Date;
                 Points = points;
                 CanonicalPointCount = canonicalPointCount;
+                SourceCoordinateVariantCount = sourceCoordinateVariantCount;
                 ParsedRows = parsedRows;
                 SkippedRows = skippedRows;
                 SourceFiles = sourceFiles;
@@ -743,6 +928,7 @@ namespace MarineEnvironment.Sources.Khoa
             public DateTime RequestedDate { get; }
             public List<CurrentPoint> Points { get; }
             public int CanonicalPointCount { get; }
+            public int SourceCoordinateVariantCount { get; }
             public int ParsedRows { get; }
             public int SkippedRows { get; }
             public string[] SourceFiles { get; }
@@ -759,6 +945,7 @@ namespace MarineEnvironment.Sources.Khoa
                 return new CompositeData(
                     requestedDate,
                     new List<CurrentPoint>(),
+                    0,
                     0,
                     0,
                     0,
@@ -867,29 +1054,33 @@ namespace MarineEnvironment.Sources.Khoa
             public YearIndex(
                 int year,
                 string path,
-                Dictionary<(long Lat, long Lon), PointSeries> seriesByPoint,
+                Dictionary<int, PointSeries> seriesByPoint,
+                HashSet<(double Latitude, double Longitude)> coordinateVariants,
                 int parsedRows,
                 int skippedRows)
             {
                 Year = year;
                 Path = path;
                 SeriesByPoint = seriesByPoint;
+                CoordinateVariants = coordinateVariants;
                 ParsedRows = parsedRows;
                 SkippedRows = skippedRows;
             }
 
             public int Year { get; }
             public string Path { get; }
-            public Dictionary<(long Lat, long Lon), PointSeries> SeriesByPoint { get; }
+            public Dictionary<int, PointSeries> SeriesByPoint { get; }
+            public HashSet<(double Latitude, double Longitude)> CoordinateVariants { get; }
             public int ParsedRows { get; }
             public int SkippedRows { get; }
 
-            public static YearIndex Empty(int year)
+            public static YearIndex Empty(int year, string path = "")
             {
                 return new YearIndex(
                     year,
-                    string.Empty,
-                    new Dictionary<(long Lat, long Lon), PointSeries>(),
+                    path,
+                    new Dictionary<int, PointSeries>(),
+                    new HashSet<(double Latitude, double Longitude)>(),
                     0,
                     0);
             }
@@ -897,14 +1088,16 @@ namespace MarineEnvironment.Sources.Khoa
 
         private sealed class PointSeries
         {
-            public PointSeries(double latitude, double longitude)
+            public PointSeries(int canonicalId, double canonicalLatitude, double canonicalLongitude)
             {
-                Latitude = latitude;
-                Longitude = longitude;
+                CanonicalId = canonicalId;
+                CanonicalLatitude = canonicalLatitude;
+                CanonicalLongitude = canonicalLongitude;
             }
 
-            public double Latitude { get; }
-            public double Longitude { get; }
+            public int CanonicalId { get; }
+            public double CanonicalLatitude { get; }
+            public double CanonicalLongitude { get; }
             public List<TemporalSample> Samples { get; } = new List<TemporalSample>();
 
             public void Sort()
@@ -973,32 +1166,41 @@ namespace MarineEnvironment.Sources.Khoa
             public int TemporalOffsetDays { get; }
         }
 
-        private sealed class SelectedPoint
-        {
-            public SelectedPoint(double latitude, double longitude, TemporalSample sample)
-            {
-                Latitude = latitude;
-                Longitude = longitude;
-                Sample = sample;
-            }
-
-            public double Latitude { get; }
-            public double Longitude { get; }
-            public TemporalSample Sample { get; }
-        }
-
         private readonly struct TemporalSample
         {
-            public TemporalSample(DateTime date, double speedMetersPerSecond, double directionDegrees)
+            public TemporalSample(
+                DateTime date,
+                double latitude,
+                double longitude,
+                double speedMetersPerSecond,
+                double directionDegrees)
             {
                 Date = date.Date;
+                Latitude = latitude;
+                Longitude = longitude;
                 SpeedMetersPerSecond = speedMetersPerSecond;
                 DirectionDegrees = directionDegrees;
             }
 
             public DateTime Date { get; }
+            public double Latitude { get; }
+            public double Longitude { get; }
             public double SpeedMetersPerSecond { get; }
             public double DirectionDegrees { get; }
+        }
+
+        private readonly struct CanonicalPoint
+        {
+            public CanonicalPoint(int id, double latitude, double longitude)
+            {
+                Id = id;
+                Latitude = latitude;
+                Longitude = longitude;
+            }
+
+            public int Id { get; }
+            public double Latitude { get; }
+            public double Longitude { get; }
         }
 
         private readonly struct CoordinatePoint
@@ -1011,6 +1213,31 @@ namespace MarineEnvironment.Sources.Khoa
 
             public double Latitude { get; }
             public double Longitude { get; }
+        }
+
+        private readonly struct CsvLayout
+        {
+            public CsvLayout(
+                int dateIndex,
+                int longitudeIndex,
+                int latitudeIndex,
+                int speedIndex,
+                int directionIndex)
+            {
+                DateIndex = dateIndex;
+                LongitudeIndex = longitudeIndex;
+                LatitudeIndex = latitudeIndex;
+                SpeedIndex = speedIndex;
+                DirectionIndex = directionIndex;
+                RequiredIndex = new[] { dateIndex, longitudeIndex, latitudeIndex, speedIndex, directionIndex }.Max();
+            }
+
+            public int DateIndex { get; }
+            public int LongitudeIndex { get; }
+            public int LatitudeIndex { get; }
+            public int SpeedIndex { get; }
+            public int DirectionIndex { get; }
+            public int RequiredIndex { get; }
         }
 
         private readonly struct NearestPoint
