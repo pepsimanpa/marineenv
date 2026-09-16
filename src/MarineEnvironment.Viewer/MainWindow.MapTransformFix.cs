@@ -18,6 +18,7 @@ namespace MarineEnvironment.Viewer
             // whose translation became progressively smaller as zoom increased.
             MapTransform.Changed += MapTransform_Changed;
             NormalizeMapTransform();
+            AddNetCdfInspectorButton();
         }
 
         private void MapTransform_Changed(object? sender, EventArgs e)
