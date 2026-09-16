@@ -98,13 +98,15 @@
       "type": "Current",
       "format": "KhoaDailyCurrentCsv",
       "enabled": false,
-      "path": "../Database/KHOA/Current",
+      "path": "../db/해양수산부_수치조류도_20260401",
       "filePattern": "해양수산부_지능형해상교통정보_수치조류도_{YYYY}.csv",
       "maxNearestDistanceKm": 30.0,
+      "maxTemporalOffsetDays": 7,
       "metadata": {
         "dataset": "해양수산부 지능형해상교통정보 수치조류도",
-        "temporalResolution": "daily",
-        "nativeGeometry": "irregular point vectors"
+        "temporalKey": "검색 시간",
+        "temporalMode": "per-point nearest-date composite",
+        "nativeGeometry": "irregular/curvilinear point vectors"
       }
     },
     {

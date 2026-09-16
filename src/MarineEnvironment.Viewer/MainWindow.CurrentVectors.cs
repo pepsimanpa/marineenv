@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using MarineEnvironment.Models;
@@ -10,11 +11,64 @@ namespace MarineEnvironment.Viewer
         private void DrawCurrentVectors(GridResult grid)
         {
             CurrentVectorCanvas.Children.Clear();
-            if (grid.Directions == null || grid.Type != EnvironmentType.Current)
+            if (grid.Type != EnvironmentType.Current)
                 return;
             if (MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
                 return;
 
+            if (grid.CurrentVectors != null && grid.CurrentVectors.Count > 0)
+            {
+                DrawSourcePointCurrentVectors(grid);
+                return;
+            }
+
+            if (grid.Directions == null)
+                return;
+
+            DrawRasterCurrentVectors(grid);
+        }
+
+        private void DrawSourcePointCurrentVectors(GridResult grid)
+        {
+            if (grid.Latitudes.Length == 0 || grid.Longitudes.Length == 0 || grid.CurrentVectors == null)
+                return;
+
+            var viewportWidth = MapViewport.ActualWidth;
+            var viewportHeight = MapViewport.ActualHeight;
+            var minLatitude = Math.Min(grid.Latitudes[0], grid.Latitudes[grid.Latitudes.Length - 1]);
+            var maxLatitude = Math.Max(grid.Latitudes[0], grid.Latitudes[grid.Latitudes.Length - 1]);
+            var minLongitude = Math.Min(grid.Longitudes[0], grid.Longitudes[grid.Longitudes.Length - 1]);
+            var maxLongitude = Math.Max(grid.Longitudes[0], grid.Longitudes[grid.Longitudes.Length - 1]);
+
+            if (maxLatitude <= minLatitude || maxLongitude <= minLongitude)
+                return;
+
+            // Preserve actual source coordinates, but keep the display readable by allowing at most
+            // one source vector per ~44 px screen cell. This is display decimation only; the raster
+            // and point-query data remain unchanged.
+            const double screenCellSize = 44.0;
+            var occupiedCells = new HashSet<(int X, int Y)>();
+
+            foreach (var vector in grid.CurrentVectors)
+            {
+                if (vector.Latitude < minLatitude || vector.Latitude > maxLatitude
+                    || vector.Longitude < minLongitude || vector.Longitude > maxLongitude)
+                {
+                    continue;
+                }
+
+                var x = (vector.Longitude - minLongitude) / (maxLongitude - minLongitude) * viewportWidth;
+                var y = (maxLatitude - vector.Latitude) / (maxLatitude - minLatitude) * viewportHeight;
+                var cell = ((int)(x / screenCellSize), (int)(y / screenCellSize));
+                if (!occupiedCells.Add(cell))
+                    continue;
+
+                AddCurrentArrow(x, y, vector.Direction);
+            }
+        }
+
+        private void DrawRasterCurrentVectors(GridResult grid)
+        {
             var viewportWidth = MapViewport.ActualWidth;
             var viewportHeight = MapViewport.ActualHeight;
             var maxColumns = Math.Max(1, (int)(viewportWidth / 48.0));

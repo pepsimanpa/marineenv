@@ -46,6 +46,19 @@ namespace MarineEnvironment.Models
         }
     }
 
+    /// <summary>
+    /// A vector sample at the source-native coordinate used for current-field visualization.
+    /// SourceDate and TemporalOffsetDays are optional because harmonic/gridded current sources
+    /// may not use the KHOA nearest-date composite model.
+    /// </summary>
+    public sealed record CurrentVectorSample(
+        double Latitude,
+        double Longitude,
+        double Speed,
+        double Direction,
+        DateTime? SourceDate = null,
+        int? TemporalOffsetDays = null);
+
     public sealed record Fes2014Constituent(string Name, string FileStem);
 
     /// <summary>
@@ -124,6 +137,7 @@ namespace MarineEnvironment.Models
                 if (string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
                     return item;
             }
+
             throw new InvalidOperationException($"FES2014 constituent '{name}' is not registered.");
         }
     }
