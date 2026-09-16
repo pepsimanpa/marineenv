@@ -94,7 +94,7 @@
       }
     },
     {
-      "id": "GOCI2_TSS",
+      "id": "GOCI2_TURBIDITY",
       "type": "Turbidity",
       "format": "Goci2Tss",
       "enabled": false,
@@ -102,12 +102,16 @@
       "variable": "TSS",
       "latitudeVariable": "latitude",
       "longitudeVariable": "longitude",
-      "unit": "g/m^3",
+      "unit": "NTU",
       "metadata": {
-        "dataset": "GK2B GOCI-II Level-2 Local Area TSS mosaic",
-        "product": "Total Suspended Solids concentration",
+        "dataset": "GK2B GOCI-II Level-2 Local Area TSS mosaics",
+        "sourceProduct": "Total Suspended Solids concentration",
+        "derivedProduct": "Turbidity",
+        "aggregation": "Query-time pixel median of up to five LA mosaic files",
+        "conversion": "Turbidity_NTU = 0.3671 * TSS_mg/L",
+        "conversionModel": "KIOST_GOMSO_TSS_TURBIDITY_LINEAR",
         "nominalSpatialResolution": "250 m",
-        "note": "Uses ..._LA_TSS.nc mosaic files; S000-S011 slot files are not required. TSS is concentration, not NTU turbidity."
+        "note": "Keeps original ..._LA_TSS.nc files. Invalid quality pixels are excluded; no averaged DB is generated."
       }
     },
     {
