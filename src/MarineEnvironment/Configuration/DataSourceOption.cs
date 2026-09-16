@@ -43,24 +43,6 @@ namespace MarineEnvironment.Configuration
         /// </summary>
         public CurrentConstituentMode CurrentConstituentMode { get; init; } = CurrentConstituentMode.Major4;
 
-        /// <summary>
-        /// For GOCI-II TSS-derived turbidity sources, maximum number of LA mosaic files combined
-        /// at query time. Files nearest to the requested time are selected when more are present.
-        /// </summary>
-        public int Goci2AggregationMaxFiles { get; init; } = 5;
-
-        /// <summary>
-        /// Minimum number of quality-valid TSS observations required at a point/cell before a
-        /// median and derived turbidity value are returned.
-        /// </summary>
-        public int Goci2MinimumValidObservations { get; init; } = 1;
-
-        /// <summary>
-        /// Linear project conversion factor from TSS [mg/L] to turbidity [NTU]. The current
-        /// project default 0.3671 is based on the selected KIOST/Gomso empirical relation.
-        /// </summary>
-        public double Goci2TssToTurbidityFactor { get; init; } = 0.3671;
-
         /// <summary>Maps query axes to the data variable's dimensions when automatic matching is insufficient.</summary>
         public Dictionary<string, string>? DimensionMap { get; init; }
 
