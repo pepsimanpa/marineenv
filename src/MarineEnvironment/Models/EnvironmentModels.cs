@@ -70,6 +70,11 @@ namespace MarineEnvironment.Models
         public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
     }
 
+    /// <summary>
+    /// Result returned when a point is queried against all READY data sources.
+    /// Requested coordinates are kept separately from the source-native coordinates
+    /// reported by each EnvironmentValue.
+    /// </summary>
     public sealed class EnvironmentQueryResult
     {
         public double RequestedLatitude { get; init; }
@@ -78,6 +83,7 @@ namespace MarineEnvironment.Models
         public DateTime? RequestedDateTime { get; init; }
         public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
         public IReadOnlyList<EnvironmentValue> Values { get; init; } = Array.Empty<EnvironmentValue>();
+
         public int Count => Values.Count;
     }
 
@@ -104,9 +110,19 @@ namespace MarineEnvironment.Models
         public double[] Latitudes { get; init; } = Array.Empty<double>();
         public double[] Longitudes { get; init; } = Array.Empty<double>();
         public double?[] Values { get; init; } = Array.Empty<double?>();
+
+        /// <summary>Optional row-major direction values in degrees, used by vector fields such as currents.</summary>
         public double?[]? Directions { get; init; }
+
+        /// <summary>
+        /// Optional current vectors at source-native coordinates. Point-cloud sources can populate
+        /// this independently of the display raster so vector arrows are not fabricated at raster cells.
+        /// </summary>
         public IReadOnlyList<CurrentVectorSample>? CurrentVectors { get; init; }
+
+        /// <summary>Optional row-major labels for categorical grids such as seabed sediment classes.</summary>
         public string?[]? Labels { get; init; }
+
         public string? Unit { get; init; }
         public double? Depth { get; init; }
         public DateTime? DateTime { get; init; }
@@ -135,8 +151,10 @@ namespace MarineEnvironment.Models
 
         private void ValidateCell(int row, int column)
         {
-            if ((uint)row >= (uint)Height) throw new ArgumentOutOfRangeException(nameof(row));
-            if ((uint)column >= (uint)Width) throw new ArgumentOutOfRangeException(nameof(column));
+            if ((uint)row >= (uint)Height)
+                throw new ArgumentOutOfRangeException(nameof(row));
+            if ((uint)column >= (uint)Width)
+                throw new ArgumentOutOfRangeException(nameof(column));
         }
     }
 
@@ -152,7 +170,11 @@ namespace MarineEnvironment.Models
         string? Variable = null,
         IReadOnlyDictionary<string, object?>? Metadata = null);
 
-    public sealed record SourceState(string Id, EnvironmentType Type, SourceStatus Status, string? Message = null);
+    public sealed record SourceState(
+        string Id,
+        EnvironmentType Type,
+        SourceStatus Status,
+        string? Message = null);
 
     public sealed class InitializationResult
     {
