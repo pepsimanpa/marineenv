@@ -37,20 +37,18 @@
                         <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Min Lon"/><TextBox x:Name="MinLonTextBox" Grid.Row="2" Grid.Column="1" Margin="0,3" Text="122"/>
                         <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="Max Lon"/><TextBox x:Name="MaxLonTextBox" Grid.Row="3" Grid.Column="1" Margin="0,3" Text="133"/>
                         <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Depth (m)"/><TextBox x:Name="DepthTextBox" Grid.Row="4" Grid.Column="1" Margin="0,3" ToolTip="Point-query depth and render depth. Blank means no requested depth."/>
-                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="Month"/>
-                        <ComboBox x:Name="MonthComboBox" Grid.Row="5" Grid.Column="1" Margin="0,3" SelectedIndex="7">
-                            <ComboBoxItem Content="01"/><ComboBoxItem Content="02"/><ComboBoxItem Content="03"/><ComboBoxItem Content="04"/><ComboBoxItem Content="05"/><ComboBoxItem Content="06"/><ComboBoxItem Content="07"/><ComboBoxItem Content="08"/><ComboBoxItem Content="09"/><ComboBoxItem Content="10"/><ComboBoxItem Content="11"/><ComboBoxItem Content="12"/>
-                        </ComboBox>
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="Date"/>
+                        <DatePicker x:Name="QueryDatePicker" Grid.Row="5" Grid.Column="1" Margin="0,3" />
                     </Grid>
                     <TextBlock Text="Render Resolution" FontWeight="SemiBold" Margin="0,14,0,6"/>
                     <ComboBox x:Name="RenderResolutionComboBox" SelectedIndex="0" Margin="0,0,0,6">
                         <ComboBoxItem Content="Source Native (gridded sources)"/>
                         <ComboBoxItem Content="Custom / Display Raster"/>
                     </ComboBox>
-                    <TextBlock Text="NetCDF/FES use their source grid in Source Native mode. Vector sources such as SHOM use Width/Height only to rasterize the display." TextWrapping="Wrap" Foreground="#57606A" FontSize="11" Margin="0,0,0,6"/>
+                    <TextBlock Text="NetCDF/FES use their source grid in Source Native mode. Vector or point-cloud sources use Width/Height to rasterize the display." TextWrapping="Wrap" Foreground="#57606A" FontSize="11" Margin="0,0,0,6"/>
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="85"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Width"/><TextBox x:Name="GridWidthTextBox" Grid.Row="0" Grid.Column="1" Margin="0,3" Text="320" ToolTip="Used by Custom mode and vector display rasterization."/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Height"/><TextBox x:Name="GridHeightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="220" ToolTip="Used by Custom mode and vector display rasterization."/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Width"/><TextBox x:Name="GridWidthTextBox" Grid.Row="0" Grid.Column="1" Margin="0,3" Text="320" ToolTip="Used by Custom mode and vector/point-cloud display rasterization."/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Height"/><TextBox x:Name="GridHeightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="220" ToolTip="Used by Custom mode and vector/point-cloud display rasterization."/>
                     </Grid>
                     <Button x:Name="RenderButton" Margin="0,14,0,0" Padding="12,8" Click="Render_Click" FontWeight="SemiBold">Render Selected Source</Button>
                 </StackPanel></ScrollViewer>
@@ -70,6 +68,7 @@
                     <Border Grid.Row="1" Background="#F6F8FA" BorderBrush="#D8DEE4" BorderThickness="1" ClipToBounds="True">
                         <Grid x:Name="MapViewport" Background="Transparent" ClipToBounds="True" MouseWheel="MapViewport_MouseWheel" MouseLeftButtonDown="MapViewport_MouseLeftButtonDown" MouseLeftButtonUp="MapViewport_MouseLeftButtonUp" MouseMove="MapViewport_MouseMove" MouseLeave="MapViewport_MouseLeave" SizeChanged="MapViewport_SizeChanged">
                             <Image x:Name="MapImage" Stretch="Fill" SnapsToDevicePixels="True" IsHitTestVisible="False" RenderOptions.BitmapScalingMode="NearestNeighbor"><Image.RenderTransform><MatrixTransform x:Name="MapTransform"/></Image.RenderTransform></Image>
+                            <Canvas x:Name="CurrentVectorCanvas" IsHitTestVisible="False"><Canvas.RenderTransform><MatrixTransform x:Name="CurrentVectorTransform"/></Canvas.RenderTransform></Canvas>
                             <TextBlock x:Name="EmptyMapText" Text="Load a configuration and render a READY source." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#6E7781" FontSize="15" IsHitTestVisible="False"/>
                             <Border x:Name="ScaleBarPanel" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14" Padding="7,5" Background="#DFFFFFFF" BorderBrush="#55000000" BorderThickness="1" CornerRadius="3" Visibility="Collapsed" IsHitTestVisible="False"><StackPanel><TextBlock x:Name="ScaleBarText" Text="-" FontSize="11" FontWeight="SemiBold" Foreground="#111111" HorizontalAlignment="Center" Margin="0,0,0,2"/><Border x:Name="ScaleBarLine" Width="100" Height="7" BorderBrush="#111111" BorderThickness="1,0,1,2"/></StackPanel></Border>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" Padding="6,4" Background="#BFFFFFFF" CornerRadius="3" IsHitTestVisible="False"><TextBlock Text="Wheel: zoom  |  Drag: pan  |  Click: query ALL READY sources" Foreground="#57606A" FontSize="11"/></Border>

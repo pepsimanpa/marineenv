@@ -21,8 +21,7 @@ namespace MarineEnvironment.Viewer
 
             var latitude = _currentGrid.Latitudes[row];
             var longitude = _currentGrid.Longitudes[column];
-            var month = Math.Max(1, Math.Min(12, MonthComboBox.SelectedIndex + 1));
-            var date = new DateTime(DateTime.Now.Year, month, 15, 12, 0, 0, DateTimeKind.Local);
+            var date = GetSelectedQueryDate();
 
             double? depth = null;
             if (!string.IsNullOrWhiteSpace(DepthTextBox.Text)
@@ -57,7 +56,7 @@ namespace MarineEnvironment.Viewer
                     Source = x.SourceId,
                     Value = FormatPointValue(x.Value),
                     Unit = x.Unit ?? string.Empty,
-                    Mode = FormatMode(x.Value),
+                    Mode = FormatMode(x),
                     Latitude = x.Latitude.ToString("0.#####", CultureInfo.InvariantCulture),
                     Longitude = x.Longitude.ToString("0.#####", CultureInfo.InvariantCulture),
                     Depth = x.Depth.HasValue ? x.Depth.Value.ToString("0.###", CultureInfo.InvariantCulture) : string.Empty,
@@ -133,11 +132,21 @@ namespace MarineEnvironment.Viewer
             return FormatObject(value);
         }
 
-        private static string FormatMode(object? value)
+        private static string FormatMode(EnvironmentValue value)
         {
-            if (value is CurrentValue current)
-                return $"{current.ConstituentMode} ({current.ConstituentCount})";
-            if (value is EstimatedSeabedValue)
+            if (value.Value is CurrentValue current)
+            {
+                if (current.ConstituentCount > 0)
+                    return $"{current.ConstituentMode} ({current.ConstituentCount})";
+                if (value.Metadata != null
+                    && value.Metadata.TryGetValue("sourceTemporalResolution", out var temporal)
+                    && temporal != null)
+                {
+                    return $"DailyVector ({temporal})";
+                }
+                return "Vector";
+            }
+            if (value.Value is EstimatedSeabedValue)
                 return "DerivedEstimate";
 
             return string.Empty;

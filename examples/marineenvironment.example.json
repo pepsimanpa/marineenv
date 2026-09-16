@@ -94,6 +94,20 @@
       }
     },
     {
+      "id": "KHOA_DAILY_CURRENT",
+      "type": "Current",
+      "format": "KhoaDailyCurrentCsv",
+      "enabled": false,
+      "path": "../Database/KHOA/Current",
+      "filePattern": "해양수산부_지능형해상교통정보_수치조류도_{YYYY}.csv",
+      "maxNearestDistanceKm": 30.0,
+      "metadata": {
+        "dataset": "해양수산부 지능형해상교통정보 수치조류도",
+        "temporalResolution": "daily",
+        "nativeGeometry": "irregular point vectors"
+      }
+    },
+    {
       "id": "MARTIN2015_POROSITY",
       "type": "Porosity",
       "format": "NetCdf",
