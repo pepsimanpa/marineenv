@@ -11,14 +11,15 @@ using MarineEnvironment.Native;
 namespace MarineEnvironment.Sources.Goci2
 {
     /// <summary>
-    /// GOCI-II Level-2 LA TSS reader.
+    /// Low-level GOCI-II Level-2 LA TSS mosaic reader.
     ///
-    /// Unlike the generic NetCDF sources, GOCI-II stores latitude/longitude as 2-D
-    /// navigation arrays in /navigation_data and TSS/quality flags in /geophysical_data.
-    /// The LA mosaic is therefore a curvilinear raster, not a regular 1-D lat/lon grid.
+    /// GOCI-II stores latitude/longitude as 2-D navigation arrays in /navigation_data and
+    /// TSS/quality flags in /geophysical_data. The LA mosaic is therefore a curvilinear
+    /// raster rather than a regular 1-D latitude/longitude grid.
     ///
-    /// This source reads the official LA mosaic file (.._LA_TSS.nc). Slot files are not
-    /// required for normal use because the mosaic already combines S000..S011.
+    /// This class returns source TSS concentration from one selected mosaic. The public
+    /// Goci2Tss source path is wrapped by Goci2TurbidityDataSource, which combines up to
+    /// five mosaics at query time and converts the resulting mean TSS to derived turbidity.
     /// </summary>
     internal sealed class Goci2TssDataSource : IEnvironmentDataSource
     {
@@ -47,13 +48,7 @@ namespace MarineEnvironment.Sources.Goci2
         {
             _option = option;
             _resolvedPath = resolvedPath;
-
-            if (!option.Enabled)
-            {
-                Status = SourceStatus.Disabled;
-                return;
-            }
-
+            if (!option.Enabled) { Status = SourceStatus.Disabled; return; }
             try
             {
                 var validationFile = ResolveValidationFile();
@@ -63,23 +58,14 @@ namespace MarineEnvironment.Sources.Goci2
                     StatusMessage = validationFile ?? resolvedPath;
                     return;
                 }
-
                 using var file = Open(validationFile);
                 using var context = OpenContext(file.Id);
                 ValidateShape(context);
                 Status = SourceStatus.Ready;
                 StatusMessage = "GOCI-II LA TSS mosaic (2-D geolocation, 250 m nominal resolution)";
             }
-            catch (DllNotFoundException ex)
-            {
-                Status = SourceStatus.NativeLibraryUnavailable;
-                StatusMessage = ex.Message;
-            }
-            catch (Exception ex)
-            {
-                Status = SourceStatus.Error;
-                StatusMessage = ex.Message;
-            }
+            catch (DllNotFoundException ex) { Status = SourceStatus.NativeLibraryUnavailable; StatusMessage = ex.Message; }
+            catch (Exception ex) { Status = SourceStatus.Error; StatusMessage = ex.Message; }
         }
 
         public string Id => _option.Id;
@@ -89,16 +75,12 @@ namespace MarineEnvironment.Sources.Goci2
 
         public EnvironmentValue? Query(EnvironmentQuery query)
         {
-            if (Status != SourceStatus.Ready)
-                return null;
-
+            if (Status != SourceStatus.Ready) return null;
             var filePath = ResolveFile(query.DateTime);
-            if (filePath == null || !File.Exists(filePath))
-                return null;
+            if (filePath == null || !File.Exists(filePath)) return null;
 
             var index = GetGeoIndex(filePath);
-            if (index.Samples.Count == 0)
-                return null;
+            if (index.Samples.Count == 0) return null;
 
             var coarse = FindNearest(index.Samples, query.Latitude, query.Longitude);
             var rowStart = Math.Max(0, coarse.Row - GeoIndexStride);
@@ -108,29 +90,18 @@ namespace MarineEnvironment.Sources.Goci2
 
             using var file = Open(filePath);
             using var context = OpenContext(file.Id);
-            var nearest = FindNearestPixel(
-                context,
-                rowStart,
-                rowEnd,
-                colStart,
-                colEnd,
-                query.Latitude,
-                query.Longitude);
-
-            if (!nearest.HasValue || nearest.Value.DistanceKm > MaxPointDistanceKm)
-                return null;
+            var nearest = FindNearestPixel(context, rowStart, rowEnd, colStart, colEnd, query.Latitude, query.Longitude);
+            if (!nearest.HasValue || nearest.Value.DistanceKm > MaxPointDistanceKm) return null;
 
             var pixel = nearest.Value;
             var rawTss = ReadCell(context.GeophysicalGroupId, context.TssVariableId, pixel.Row, pixel.Column);
             var tss = TransformTss(context, rawTss);
-            if (!tss.HasValue)
-                return null;
+            if (!tss.HasValue) return null;
 
             var qualityFlag = context.FlagVariableId.HasValue
                 ? (int)Math.Round(ReadCell(context.GeophysicalGroupId, context.FlagVariableId.Value, pixel.Row, pixel.Column))
                 : 0;
-            if ((qualityFlag & InvalidQualityMask) != 0)
-                return null;
+            if ((qualityFlag & InvalidQualityMask) != 0) return null;
 
             var observationUtc = ParseObservationUtc(filePath);
             var metadata = CreateMetadata(filePath, observationUtc);
@@ -139,16 +110,9 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["sourceDistanceKm"] = pixel.DistanceKm;
 
             return new EnvironmentValue(
-                Id,
-                Type,
-                tss.Value,
-                _option.Unit ?? "g/m^3",
-                pixel.Latitude,
-                pixel.Longitude,
-                null,
-                observationUtc,
-                GetTssVariableName(),
-                metadata);
+                Id, Type, tss.Value, _option.Unit ?? "g/m^3",
+                pixel.Latitude, pixel.Longitude, null, observationUtc,
+                GetTssVariableName(), metadata);
         }
 
         public GridResult QueryGrid(GridQuery query)
@@ -160,9 +124,6 @@ namespace MarineEnvironment.Sources.Goci2
             if (query.Height < 2 || query.Height > 2048)
                 throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
 
-            // GOCI-II LA uses two-dimensional geolocation arrays. A source-native raster cannot
-            // be represented by GridResult's 1-D latitude/longitude axes without reprojection,
-            // so this source always returns a geographic display grid using the requested size.
             var filePath = ResolveFile(query.DateTime);
             if (filePath == null || !File.Exists(filePath))
                 throw new FileNotFoundException($"GOCI-II TSS mosaic file for '{Id}' was not found.", filePath ?? _resolvedPath);
@@ -173,7 +134,8 @@ namespace MarineEnvironment.Sources.Goci2
             var values = new double?[query.Width * query.Height];
             var bestDistance2 = Enumerable.Repeat(double.PositiveInfinity, values.Length).ToArray();
 
-            if (TryGetSourceWindow(index, query, out var window))
+            SourceWindow window;
+            if (TryGetSourceWindow(index, query, out window))
             {
                 using var file = Open(filePath);
                 using var context = OpenContext(file.Id);
@@ -196,34 +158,22 @@ namespace MarineEnvironment.Sources.Goci2
                             var sourceIndex = (localRow * colCount) + localCol;
                             var lat = lats[sourceIndex];
                             var lon = lons[sourceIndex];
-                            if (!IsValidCoordinate(lat, lon))
-                                continue;
-                            if (lat < query.MinLatitude || lat > query.MaxLatitude || lon < query.MinLongitude || lon > query.MaxLongitude)
-                                continue;
+                            if (!IsValidCoordinate(lat, lon)) continue;
+                            if (lat < query.MinLatitude || lat > query.MaxLatitude || lon < query.MinLongitude || lon > query.MaxLongitude) continue;
 
                             var value = TransformTss(context, tss[sourceIndex]);
-                            if (!value.HasValue)
-                                continue;
-
+                            if (!value.HasValue) continue;
                             if (flags != null)
                             {
                                 var flag = (int)Math.Round(flags[sourceIndex]);
-                                if ((flag & InvalidQualityMask) != 0)
-                                    continue;
+                                if ((flag & InvalidQualityMask) != 0) continue;
                             }
 
                             var outputRow = NearestOutputIndexDescending(latitudes, lat);
                             var outputColumn = NearestOutputIndexAscending(longitudes, lon);
                             var outputIndex = (outputRow * query.Width) + outputColumn;
-                            var distance2 = GeographicDistanceSquaredKm(
-                                lat,
-                                lon,
-                                latitudes[outputRow],
-                                longitudes[outputColumn]);
-
-                            if (distance2 >= bestDistance2[outputIndex])
-                                continue;
-
+                            var distance2 = GeographicDistanceSquaredKm(lat, lon, latitudes[outputRow], longitudes[outputColumn]);
+                            if (distance2 >= bestDistance2[outputIndex]) continue;
                             bestDistance2[outputIndex] = distance2;
                             values[outputIndex] = value.Value;
                         }
@@ -231,12 +181,10 @@ namespace MarineEnvironment.Sources.Goci2
                 }
             }
 
-            double? minimum = null;
-            double? maximum = null;
+            double? minimum = null, maximum = null;
             foreach (var value in values)
             {
-                if (!value.HasValue)
-                    continue;
+                if (!value.HasValue) continue;
                 minimum = !minimum.HasValue ? value : Math.Min(minimum.Value, value.Value);
                 maximum = !maximum.HasValue ? value : Math.Max(maximum.Value, value.Value);
             }
@@ -252,18 +200,10 @@ namespace MarineEnvironment.Sources.Goci2
 
             return new GridResult
             {
-                SourceId = Id,
-                Type = Type,
-                Width = query.Width,
-                Height = query.Height,
-                Latitudes = latitudes,
-                Longitudes = longitudes,
-                Values = values,
-                Unit = _option.Unit ?? "g/m^3",
-                DateTime = observationUtc,
-                Variable = GetTssVariableName(),
-                Minimum = minimum,
-                Maximum = maximum,
+                SourceId = Id, Type = Type, Width = query.Width, Height = query.Height,
+                Latitudes = latitudes, Longitudes = longitudes, Values = values,
+                Unit = _option.Unit ?? "g/m^3", DateTime = observationUtc,
+                Variable = GetTssVariableName(), Minimum = minimum, Maximum = maximum,
                 Metadata = metadata
             };
         }
@@ -280,21 +220,17 @@ namespace MarineEnvironment.Sources.Goci2
                 var samples = new List<GeoSample>((context.Rows / GeoIndexStride + 1) * (context.Columns / GeoIndexStride + 1));
                 var latRow = new double[context.Columns];
                 var lonRow = new double[context.Columns];
-
                 for (var row = 0; row < context.Rows; row += GeoIndexStride)
                 {
                     ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
                     ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
-
                     for (var column = 0; column < context.Columns; column += GeoIndexStride)
                     {
                         var lat = latRow[column];
                         var lon = lonRow[column];
-                        if (IsValidCoordinate(lat, lon))
-                            samples.Add(new GeoSample(lat, lon, row, column));
+                        if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
                     }
                 }
-
                 if ((context.Rows - 1) % GeoIndexStride != 0)
                     AppendIndexRow(context, context.Rows - 1, samples, latRow, lonRow);
 
@@ -312,8 +248,7 @@ namespace MarineEnvironment.Sources.Goci2
             {
                 var lat = latRow[column];
                 var lon = lonRow[column];
-                if (IsValidCoordinate(lat, lon))
-                    samples.Add(new GeoSample(lat, lon, row, column));
+                if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
             }
         }
 
@@ -334,20 +269,12 @@ namespace MarineEnvironment.Sources.Goci2
             return best;
         }
 
-        private static PixelMatch? FindNearestPixel(
-            FileContext context,
-            int rowStart,
-            int rowEnd,
-            int colStart,
-            int colEnd,
-            double latitude,
-            double longitude)
+        private static PixelMatch? FindNearestPixel(FileContext context, int rowStart, int rowEnd, int colStart, int colEnd, double latitude, double longitude)
         {
             var rowCount = rowEnd - rowStart + 1;
             var colCount = colEnd - colStart + 1;
             var lats = ReadBlock(context.NavigationGroupId, context.LatitudeVariableId, rowStart, rowCount, colStart, colCount);
             var lons = ReadBlock(context.NavigationGroupId, context.LongitudeVariableId, rowStart, rowCount, colStart, colCount);
-
             PixelMatch? best = null;
             var bestDistance2 = double.PositiveInfinity;
             for (var localRow = 0; localRow < rowCount; localRow++)
@@ -357,20 +284,11 @@ namespace MarineEnvironment.Sources.Goci2
                     var index = (localRow * colCount) + localCol;
                     var lat = lats[index];
                     var lon = lons[index];
-                    if (!IsValidCoordinate(lat, lon))
-                        continue;
-
+                    if (!IsValidCoordinate(lat, lon)) continue;
                     var distance2 = GeographicDistanceSquaredKm(lat, lon, latitude, longitude);
-                    if (distance2 >= bestDistance2)
-                        continue;
-
+                    if (distance2 >= bestDistance2) continue;
                     bestDistance2 = distance2;
-                    best = new PixelMatch(
-                        rowStart + localRow,
-                        colStart + localCol,
-                        lat,
-                        lon,
-                        Math.Sqrt(distance2));
+                    best = new PixelMatch(rowStart + localRow, colStart + localCol, lat, lon, Math.Sqrt(distance2));
                 }
             }
             return best;
@@ -384,13 +302,7 @@ namespace MarineEnvironment.Sources.Goci2
                 x.Latitude <= query.MaxLatitude + marginDegrees &&
                 x.Longitude >= query.MinLongitude - marginDegrees &&
                 x.Longitude <= query.MaxLongitude + marginDegrees).ToArray();
-
-            if (candidates.Length == 0)
-            {
-                window = default;
-                return false;
-            }
-
+            if (candidates.Length == 0) { window = default; return false; }
             window = new SourceWindow(
                 Math.Max(0, candidates.Min(x => x.Row) - GeoIndexStride),
                 Math.Min(index.Rows - 1, candidates.Max(x => x.Row) + GeoIndexStride),
@@ -403,26 +315,20 @@ namespace MarineEnvironment.Sources.Goci2
         {
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(rootId, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(rootId, GeophysicalGroupName, out var geophysicalGroupId), "Find GOCI-II geophysical_data group");
-
             var latitudeName = string.IsNullOrWhiteSpace(_option.LatitudeVariable) ? DefaultLatitudeVariable : _option.LatitudeVariable;
             var longitudeName = string.IsNullOrWhiteSpace(_option.LongitudeVariable) ? DefaultLongitudeVariable : _option.LongitudeVariable;
             var tssName = GetTssVariableName();
-
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, latitudeName, out var latitudeVariableId), $"Find GOCI-II latitude variable '{latitudeName}'");
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, longitudeName, out var longitudeVariableId), $"Find GOCI-II longitude variable '{longitudeName}'");
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(geophysicalGroupId, tssName, out var tssVariableId), $"Find GOCI-II TSS variable '{tssName}'");
-
             int? flagVariableId = null;
-            if (NetCdfNative.nc_inq_varid(geophysicalGroupId, FlagVariable, out var flagId) == NetCdfNative.NoError)
-                flagVariableId = flagId;
+            if (NetCdfNative.nc_inq_varid(geophysicalGroupId, FlagVariable, out var flagId) == NetCdfNative.NoError) flagVariableId = flagId;
 
             var shape = Get2DShape(geophysicalGroupId, tssVariableId, tssName);
             var latShape = Get2DShape(navigationGroupId, latitudeVariableId, latitudeName);
             var lonShape = Get2DShape(navigationGroupId, longitudeVariableId, longitudeName);
-            if (shape.Rows != latShape.Rows || shape.Columns != latShape.Columns ||
-                shape.Rows != lonShape.Rows || shape.Columns != lonShape.Columns)
+            if (shape.Rows != latShape.Rows || shape.Columns != latShape.Columns || shape.Rows != lonShape.Rows || shape.Columns != lonShape.Columns)
                 throw new InvalidDataException("GOCI-II TSS and navigation latitude/longitude dimensions do not match.");
-
             if (flagVariableId.HasValue)
             {
                 var flagShape = Get2DShape(geophysicalGroupId, flagVariableId.Value, FlagVariable);
@@ -431,14 +337,8 @@ namespace MarineEnvironment.Sources.Goci2
             }
 
             return new FileContext(
-                navigationGroupId,
-                geophysicalGroupId,
-                latitudeVariableId,
-                longitudeVariableId,
-                tssVariableId,
-                flagVariableId,
-                shape.Rows,
-                shape.Columns,
+                navigationGroupId, geophysicalGroupId, latitudeVariableId, longitudeVariableId,
+                tssVariableId, flagVariableId, shape.Rows, shape.Columns,
                 TryReadAttribute(geophysicalGroupId, tssVariableId, "_FillValue"),
                 TryReadAttribute(geophysicalGroupId, tssVariableId, "scale_factor") ?? 1.0,
                 TryReadAttribute(geophysicalGroupId, tssVariableId, "add_offset") ?? 0.0,
@@ -449,9 +349,7 @@ namespace MarineEnvironment.Sources.Goci2
         private static Shape Get2DShape(int groupId, int variableId, string variableName)
         {
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varndims(groupId, variableId, out var ndims), $"Read dimensions for '{variableName}'");
-            if (ndims != 2)
-                throw new InvalidDataException($"GOCI-II variable '{variableName}' must be 2-D, but has {ndims} dimensions.");
-
+            if (ndims != 2) throw new InvalidDataException($"GOCI-II variable '{variableName}' must be 2-D, but has {ndims} dimensions.");
             var dimIds = new int[2];
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_vardimid(groupId, variableId, dimIds), $"Read dimension ids for '{variableName}'");
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_dimlen(groupId, dimIds[0], out var rows), $"Read rows for '{variableName}'");
@@ -461,8 +359,7 @@ namespace MarineEnvironment.Sources.Goci2
 
         private static void ValidateShape(FileContext context)
         {
-            if (context.Rows <= 0 || context.Columns <= 0)
-                throw new InvalidDataException("GOCI-II TSS has an empty raster.");
+            if (context.Rows <= 0 || context.Columns <= 0) throw new InvalidDataException("GOCI-II TSS has an empty raster.");
         }
 
         private static double[] ReadBlock(int groupId, int variableId, int rowStart, int rowCount, int columnStart, int columnCount)
@@ -490,13 +387,9 @@ namespace MarineEnvironment.Sources.Goci2
 
         private static double? TransformTss(FileContext context, double raw)
         {
-            if (double.IsNaN(raw) || double.IsInfinity(raw))
-                return null;
-            if (context.FillValue.HasValue && NearlyEqual(raw, context.FillValue.Value))
-                return null;
-            if (raw < context.ValidMin || raw > context.ValidMax)
-                return null;
-
+            if (double.IsNaN(raw) || double.IsInfinity(raw)) return null;
+            if (context.FillValue.HasValue && NearlyEqual(raw, context.FillValue.Value)) return null;
+            if (raw < context.ValidMin || raw > context.ValidMax) return null;
             var value = (raw * context.ScaleFactor) + context.AddOffset;
             return double.IsNaN(value) || double.IsInfinity(value) ? (double?)null : value;
         }
@@ -517,8 +410,7 @@ namespace MarineEnvironment.Sources.Goci2
         {
             return !double.IsNaN(latitude) && !double.IsInfinity(latitude) &&
                    !double.IsNaN(longitude) && !double.IsInfinity(longitude) &&
-                   latitude >= -90.0 && latitude <= 90.0 &&
-                   longitude >= -180.0 && longitude <= 180.0;
+                   latitude >= -90.0 && latitude <= 90.0 && longitude >= -180.0 && longitude <= 180.0;
         }
 
         private static double GeographicDistanceSquaredKm(double lat1, double lon1, double lat2, double lon2)
@@ -533,16 +425,14 @@ namespace MarineEnvironment.Sources.Goci2
         private static double[] BuildDescendingAxis(double max, double min, int count)
         {
             var result = new double[count];
-            for (var i = 0; i < count; i++)
-                result[i] = max + ((min - max) * (i / (double)(count - 1)));
+            for (var i = 0; i < count; i++) result[i] = max + ((min - max) * (i / (double)(count - 1)));
             return result;
         }
 
         private static double[] BuildAscendingAxis(double min, double max, int count)
         {
             var result = new double[count];
-            for (var i = 0; i < count; i++)
-                result[i] = min + ((max - min) * (i / (double)(count - 1)));
+            for (var i = 0; i < count; i++) result[i] = min + ((max - min) * (i / (double)(count - 1)));
             return result;
         }
 
@@ -565,10 +455,7 @@ namespace MarineEnvironment.Sources.Goci2
             return value;
         }
 
-        private string GetTssVariableName()
-        {
-            return string.IsNullOrWhiteSpace(_option.Variable) ? DefaultTssVariable : _option.Variable;
-        }
+        private string GetTssVariableName() => string.IsNullOrWhiteSpace(_option.Variable) ? DefaultTssVariable : _option.Variable;
 
         private Dictionary<string, object?> CreateMetadata(string filePath, DateTime? observationUtc)
         {
@@ -581,43 +468,29 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["observationMode"] = "LA";
             metadata["productLayout"] = IsMosaicFile(filePath) ? "Mosaic" : "Slot/other";
             metadata["parameter"] = "Total Suspended Solids concentration";
-            metadata["parameterNote"] = "TSS is suspended-matter concentration, not NTU turbidity.";
+            metadata["parameterNote"] = "Raw source TSS concentration; public Goci2Tss format wraps this reader to derive NTU.";
             metadata["nominalSpatialResolution"] = "250 m";
             metadata["curvilinearGeolocation"] = true;
             metadata["navigationVariables"] = $"/{NavigationGroupName}/{_option.LatitudeVariable}, /{NavigationGroupName}/{_option.LongitudeVariable}";
             metadata["tssVariable"] = $"/{GeophysicalGroupName}/{GetTssVariableName()}";
-            if (observationUtc.HasValue)
-                metadata["observationUtc"] = observationUtc.Value;
+            if (observationUtc.HasValue) metadata["observationUtc"] = observationUtc.Value;
             return metadata;
         }
 
         private string? ResolveValidationFile()
         {
-            if (File.Exists(_resolvedPath))
-                return _resolvedPath;
-            if (!Directory.Exists(_resolvedPath))
-                return null;
-
-            return EnumerateMosaicFiles(_resolvedPath)
-                .OrderByDescending(x => x.ObservationUtc)
-                .Select(x => x.Path)
-                .FirstOrDefault();
+            if (File.Exists(_resolvedPath)) return _resolvedPath;
+            if (!Directory.Exists(_resolvedPath)) return null;
+            return EnumerateMosaicFiles(_resolvedPath).OrderByDescending(x => x.ObservationUtc).Select(x => x.Path).FirstOrDefault();
         }
 
         private string? ResolveFile(DateTime? requestedDateTime)
         {
-            if (File.Exists(_resolvedPath))
-                return _resolvedPath;
-            if (!Directory.Exists(_resolvedPath))
-                return null;
-
+            if (File.Exists(_resolvedPath)) return _resolvedPath;
+            if (!Directory.Exists(_resolvedPath)) return null;
             var files = EnumerateMosaicFiles(_resolvedPath).ToArray();
-            if (files.Length == 0)
-                return null;
-
-            if (!requestedDateTime.HasValue)
-                return files.OrderByDescending(x => x.ObservationUtc).First().Path;
-
+            if (files.Length == 0) return null;
+            if (!requestedDateTime.HasValue) return files.OrderByDescending(x => x.ObservationUtc).First().Path;
             var requestedUtc = requestedDateTime.Value.Kind == DateTimeKind.Local
                 ? requestedDateTime.Value.ToUniversalTime()
                 : DateTime.SpecifyKind(requestedDateTime.Value, DateTimeKind.Utc);
@@ -629,29 +502,20 @@ namespace MarineEnvironment.Sources.Goci2
             foreach (var path in Directory.EnumerateFiles(directory, "*.nc", SearchOption.TopDirectoryOnly))
             {
                 var observationUtc = ParseObservationUtc(path);
-                if (observationUtc.HasValue && IsMosaicFile(path))
-                    yield return new MosaicFile(path, observationUtc.Value);
+                if (observationUtc.HasValue && IsMosaicFile(path)) yield return new MosaicFile(path, observationUtc.Value);
             }
         }
 
-        private static bool IsMosaicFile(string path)
-        {
-            return MosaicFileRegex.IsMatch(Path.GetFileName(path));
-        }
+        private static bool IsMosaicFile(string path) => MosaicFileRegex.IsMatch(Path.GetFileName(path));
 
         private static DateTime? ParseObservationUtc(string path)
         {
             var match = MosaicFileRegex.Match(Path.GetFileName(path));
-            if (!match.Success)
-                return null;
-
-            if (DateTime.TryParseExact(
-                match.Groups["date"].Value + match.Groups["time"].Value,
-                "yyyyMMddHHmmss",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var value))
-                return value;
+            if (!match.Success) return null;
+            DateTime value;
+            if (DateTime.TryParseExact(match.Groups["date"].Value + match.Groups["time"].Value,
+                "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out value)) return value;
             return null;
         }
 
@@ -663,11 +527,7 @@ namespace MarineEnvironment.Sources.Goci2
 
         public void Dispose()
         {
-            lock (_indexSync)
-            {
-                _geoIndex = null;
-                _geoIndexFile = null;
-            }
+            lock (_indexSync) { _geoIndex = null; _geoIndexFile = null; }
         }
 
         private sealed class NetCdfFile : IDisposable
@@ -679,36 +539,15 @@ namespace MarineEnvironment.Sources.Goci2
 
         private sealed class FileContext : IDisposable
         {
-            public FileContext(
-                int navigationGroupId,
-                int geophysicalGroupId,
-                int latitudeVariableId,
-                int longitudeVariableId,
-                int tssVariableId,
-                int? flagVariableId,
-                int rows,
-                int columns,
-                double? fillValue,
-                double scaleFactor,
-                double addOffset,
-                double validMin,
-                double validMax)
+            public FileContext(int navigationGroupId, int geophysicalGroupId, int latitudeVariableId, int longitudeVariableId,
+                int tssVariableId, int? flagVariableId, int rows, int columns, double? fillValue,
+                double scaleFactor, double addOffset, double validMin, double validMax)
             {
-                NavigationGroupId = navigationGroupId;
-                GeophysicalGroupId = geophysicalGroupId;
-                LatitudeVariableId = latitudeVariableId;
-                LongitudeVariableId = longitudeVariableId;
-                TssVariableId = tssVariableId;
-                FlagVariableId = flagVariableId;
-                Rows = rows;
-                Columns = columns;
-                FillValue = fillValue;
-                ScaleFactor = scaleFactor;
-                AddOffset = addOffset;
-                ValidMin = validMin;
-                ValidMax = validMax;
+                NavigationGroupId = navigationGroupId; GeophysicalGroupId = geophysicalGroupId;
+                LatitudeVariableId = latitudeVariableId; LongitudeVariableId = longitudeVariableId;
+                TssVariableId = tssVariableId; FlagVariableId = flagVariableId; Rows = rows; Columns = columns;
+                FillValue = fillValue; ScaleFactor = scaleFactor; AddOffset = addOffset; ValidMin = validMin; ValidMax = validMax;
             }
-
             public int NavigationGroupId { get; }
             public int GeophysicalGroupId { get; }
             public int LatitudeVariableId { get; }
@@ -727,12 +566,7 @@ namespace MarineEnvironment.Sources.Goci2
 
         private sealed class GeoIndex
         {
-            public GeoIndex(int rows, int columns, List<GeoSample> samples)
-            {
-                Rows = rows;
-                Columns = columns;
-                Samples = samples;
-            }
+            public GeoIndex(int rows, int columns, List<GeoSample> samples) { Rows = rows; Columns = columns; Samples = samples; }
             public int Rows { get; }
             public int Columns { get; }
             public List<GeoSample> Samples { get; }
@@ -741,12 +575,7 @@ namespace MarineEnvironment.Sources.Goci2
         private readonly struct GeoSample
         {
             public GeoSample(double latitude, double longitude, int row, int column)
-            {
-                Latitude = latitude;
-                Longitude = longitude;
-                Row = row;
-                Column = column;
-            }
+            { Latitude = latitude; Longitude = longitude; Row = row; Column = column; }
             public double Latitude { get; }
             public double Longitude { get; }
             public int Row { get; }
@@ -756,13 +585,7 @@ namespace MarineEnvironment.Sources.Goci2
         private readonly struct PixelMatch
         {
             public PixelMatch(int row, int column, double latitude, double longitude, double distanceKm)
-            {
-                Row = row;
-                Column = column;
-                Latitude = latitude;
-                Longitude = longitude;
-                DistanceKm = distanceKm;
-            }
+            { Row = row; Column = column; Latitude = latitude; Longitude = longitude; DistanceKm = distanceKm; }
             public int Row { get; }
             public int Column { get; }
             public double Latitude { get; }
@@ -780,12 +603,7 @@ namespace MarineEnvironment.Sources.Goci2
         private readonly struct SourceWindow
         {
             public SourceWindow(int rowStart, int rowEnd, int columnStart, int columnEnd)
-            {
-                RowStart = rowStart;
-                RowEnd = rowEnd;
-                ColumnStart = columnStart;
-                ColumnEnd = columnEnd;
-            }
+            { RowStart = rowStart; RowEnd = rowEnd; ColumnStart = columnStart; ColumnEnd = columnEnd; }
             public int RowStart { get; }
             public int RowEnd { get; }
             public int ColumnStart { get; }
@@ -794,11 +612,7 @@ namespace MarineEnvironment.Sources.Goci2
 
         private readonly struct MosaicFile
         {
-            public MosaicFile(string path, DateTime observationUtc)
-            {
-                Path = path;
-                ObservationUtc = observationUtc;
-            }
+            public MosaicFile(string path, DateTime observationUtc) { Path = path; ObservationUtc = observationUtc; }
             public string Path { get; }
             public DateTime ObservationUtc { get; }
         }
