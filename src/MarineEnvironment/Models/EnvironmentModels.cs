@@ -24,6 +24,10 @@ namespace MarineEnvironment.Models
         NetCdf,
         Fes2014Current,
         ShomSeabed,
+        /// <summary>
+        /// GOCI-II L2 LA TSS mosaic input. In the current project this source format is
+        /// exposed as derived Turbidity after query-time multi-file TSS averaging.
+        /// </summary>
         Goci2Tss
     }
 
