@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [ main, feature/goci2-tss-mosaic ]
+    branches: [ main ]
   pull_request:
 
 jobs:
