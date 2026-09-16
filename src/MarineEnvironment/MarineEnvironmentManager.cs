@@ -6,6 +6,7 @@ using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
 using MarineEnvironment.Sources.Fes2014;
+using MarineEnvironment.Sources.Khoa;
 using MarineEnvironment.Sources.NetCdf;
 using MarineEnvironment.Sources.Shom;
 
@@ -244,6 +245,8 @@ namespace MarineEnvironment
                 throw new ArgumentException($"NetCDF data source '{option.Id}' requires a variable name.", nameof(option));
             if (option.Format == DataSourceFormat.Fes2014Current && option.Type != EnvironmentType.Current)
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
+            if (option.Format == DataSourceFormat.KhoaDailyCurrentCsv && option.Type != EnvironmentType.Current)
+                throw new ArgumentException($"KHOA daily-current CSV source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
             if (!string.IsNullOrWhiteSpace(option.SeabedMappingPath) && option.Format != DataSourceFormat.ShomSeabed)
@@ -267,6 +270,9 @@ namespace MarineEnvironment
                     break;
                 case DataSourceFormat.Fes2014Current:
                     source = new Fes2014CurrentDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.KhoaDailyCurrentCsv:
+                    source = new KhoaDailyCurrentCsvDataSource(option, resolvedPath);
                     break;
                 case DataSourceFormat.ShomSeabed:
                     source = new ShomSeabedDataSource(option, resolvedPath);

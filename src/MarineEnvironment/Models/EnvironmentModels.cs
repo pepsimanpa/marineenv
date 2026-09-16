@@ -23,6 +23,7 @@ namespace MarineEnvironment.Models
     {
         NetCdf,
         Fes2014Current,
+        KhoaDailyCurrentCsv,
         ShomSeabed
     }
 
@@ -46,8 +47,8 @@ namespace MarineEnvironment.Models
     /// Controls how QueryGrid chooses its output raster geometry.
     /// Custom preserves the caller-provided Width/Height behavior.
     /// SourceNative asks gridded sources to return the source-native cells that fall
-    /// inside the requested bounds. Vector/categorical sources may fall back to a
-    /// display raster because they do not have a native raster resolution.
+    /// inside the requested bounds. Vector/categorical or point-cloud sources may fall
+    /// back to a display raster because they do not have a regular native raster.
     /// </summary>
     public enum GridResolutionMode
     {
@@ -104,8 +105,19 @@ namespace MarineEnvironment.Models
         public double[] Latitudes { get; init; } = Array.Empty<double>();
         public double[] Longitudes { get; init; } = Array.Empty<double>();
         public double?[] Values { get; init; } = Array.Empty<double?>();
+
+        /// <summary>Optional row-major direction values in degrees, used by vector fields such as currents.</summary>
+        public double?[]? Directions { get; init; }
+
+        /// <summary>
+        /// Optional current vectors at source-native coordinates. Point-cloud sources can populate
+        /// this independently of the display raster so vector arrows are not fabricated at raster cells.
+        /// </summary>
+        public IReadOnlyList<CurrentVectorSample>? CurrentVectors { get; init; }
+
         /// <summary>Optional row-major labels for categorical grids such as seabed sediment classes.</summary>
         public string?[]? Labels { get; init; }
+
         public string? Unit { get; init; }
         public double? Depth { get; init; }
         public DateTime? DateTime { get; init; }
@@ -118,6 +130,12 @@ namespace MarineEnvironment.Models
         {
             ValidateCell(row, column);
             return Values[(row * Width) + column];
+        }
+
+        public double? GetDirection(int row, int column)
+        {
+            ValidateCell(row, column);
+            return Directions == null ? null : Directions[(row * Width) + column];
         }
 
         public string? GetLabel(int row, int column)

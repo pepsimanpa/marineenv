@@ -13,7 +13,10 @@ namespace MarineEnvironment.Configuration
         /// <summary>File path or directory path. Relative paths are resolved against the configuration file directory.</summary>
         public string Path { get; init; } = string.Empty;
 
-        /// <summary>Optional pattern for multi-file sources. Supports {MM}, e.g. woa23_..._t{MM}_04.nc.</summary>
+        /// <summary>
+        /// Optional pattern for multi-file sources. Supports {MM} for monthly NetCDF files
+        /// and {YYYY} for yearly files such as KHOA tidal-current CSV archives.
+        /// </summary>
         public string? FilePattern { get; init; }
 
         public string Variable { get; init; } = string.Empty;
@@ -22,6 +25,20 @@ namespace MarineEnvironment.Configuration
         public string? DepthVariable { get; init; }
         public string? TimeVariable { get; init; }
         public string? Unit { get; init; }
+
+        /// <summary>
+        /// Optional nearest-point cutoff in kilometers for irregular point-cloud sources.
+        /// KHOA tidal-current CSV defaults to 30 km when omitted. Set to 0 or a negative value
+        /// only when unlimited nearest-neighbor lookup is explicitly desired.
+        /// </summary>
+        public double? MaxNearestDistanceKm { get; init; }
+
+        /// <summary>
+        /// Maximum absolute search-date offset used when KHOA point records are composed for
+        /// a requested day. KHOA defaults to 7 days when omitted. Set to 0 for exact-date-only
+        /// behavior. This is a per-point nearest-date selection, not a temporal average.
+        /// </summary>
+        public int? MaxTemporalOffsetDays { get; init; }
 
         /// <summary>
         /// For SHOM worldwide sediment shapefiles, identifies the DBF field containing the
