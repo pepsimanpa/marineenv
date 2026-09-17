@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarineEnvironment", "src\Ma
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarineEnvironment.Viewer", "src\MarineEnvironment.Viewer\MarineEnvironment.Viewer.csproj", "{EFA9E468-7BD8-42EF-973A-2C196A919F67}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Goci2Downloader", "src\Goci2Downloader\Goci2Downloader.csproj", "{A3F4EAE3-9D7E-4EFA-B3AA-6A5A8C231947}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
 		{EFA9E468-7BD8-42EF-973A-2C196A919F67}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EFA9E468-7BD8-42EF-973A-2C196A919F67}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EFA9E468-7BD8-42EF-973A-2C196A919F67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3F4EAE3-9D7E-4EFA-B3AA-6A5A8C231947}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3F4EAE3-9D7E-4EFA-B3AA-6A5A8C231947}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3F4EAE3-9D7E-4EFA-B3AA-6A5A8C231947}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3F4EAE3-9D7E-4EFA-B3AA-6A5A8C231947}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
