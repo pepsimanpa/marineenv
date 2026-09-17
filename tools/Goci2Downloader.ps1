@@ -78,17 +78,32 @@ function Invoke-NoscDayQuery {
         throw "NOSC API query failed ($dateText): $($_.Exception.Message)"
     }
 
+    if ($r -is [string]) {
+        $preview = $r
+        if ($preview.Length -gt 160) { $preview = $preview.Substring(0,160) }
+        $preview = $preview.Replace("`r", ' ').Replace("`n", ' ')
+        throw "NOSC API did not return a JSON object. Response preview: $preview"
+    }
+
     $code = Get-ScalarProperty $r 'resultCode'
+    $message = Get-ScalarProperty $r 'resultMsg'
+    $totalCount = Get-ScalarProperty $r 'totalCount'
     if ($code -and $code -ne '200') {
-        $msg = Get-ScalarProperty $r 'resultMsg'
-        throw "NOSC API error $code : $msg"
+        throw "NOSC API error $code : $message"
     }
 
     $data = Get-PropertyValue $r 'data'
-    if ($null -eq $data) { return @() }
+    $dataItems = @()
+    if ($null -ne $data) { $dataItems = @($data) }
+
+    if ($DryRun) {
+        Write-Host ("  resultCode={0}, totalCount={1}, dataCount={2}" -f $code, $totalCount, $dataItems.Count)
+    }
+
+    if ($dataItems.Count -eq 0) { return @() }
 
     $result = @()
-    foreach ($item in @($data)) {
+    foreach ($item in $dataItems) {
         $fileName = Get-ScalarProperty $item 'fileName'
         $filePath = Get-ScalarProperty $item 'filePath'
         $product = Get-ScalarProperty $item 'product'
@@ -104,6 +119,21 @@ function Invoke-NoscDayQuery {
             ObservationUtc = $utc
         }
     }
+
+    if ($DryRun) {
+        Write-Host ("  matching TSS mosaics={0}" -f $result.Count)
+        if ($result.Count -eq 0 -and $dataItems.Count -gt 0) {
+            Write-Host "  First API entries:"
+            foreach ($sample in @($dataItems | Select-Object -First 5)) {
+                $sampleName = Get-ScalarProperty $sample 'fileName'
+                $sampleProduct = Get-ScalarProperty $sample 'product'
+                $samplePath = Get-ScalarProperty $sample 'filePath'
+                $hasPath = -not [string]::IsNullOrWhiteSpace($samplePath)
+                Write-Host ("    fileName={0} / product={1} / filePath={2}" -f $sampleName, $sampleProduct, $hasPath)
+            }
+        }
+    }
+
     return $result
 }
 
