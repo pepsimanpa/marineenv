@@ -25,10 +25,10 @@ function ConvertFrom-SecureStringPlainText {
 
 function Get-ServiceKey {
     if (-not [string]::IsNullOrWhiteSpace($ServiceKey)) { return $ServiceKey }
-    Write-Host "NOSC OPEN API ServiceKey가 필요합니다. 키는 파일에 저장되지 않습니다."
+    Write-Host "NOSC OPEN API ServiceKey is required. The key will not be saved to a file."
     $secure = Read-Host "ServiceKey" -AsSecureString
     $plain = ConvertFrom-SecureStringPlainText $secure
-    if ([string]::IsNullOrWhiteSpace($plain)) { throw "ServiceKey가 비어 있습니다." }
+    if ([string]::IsNullOrWhiteSpace($plain)) { throw "ServiceKey is empty." }
     return $plain
 }
 
@@ -40,35 +40,42 @@ function Get-ObservationUtcFromName {
     return [datetime]::SpecifyKind([datetime]::ParseExact($stamp, 'yyyyMMddHHmmss', [Globalization.CultureInfo]::InvariantCulture), [DateTimeKind]::Utc)
 }
 
-function Get-ScalarProperty {
+function Get-PropertyValue {
     param($Object, [string]$Name)
     if ($null -eq $Object) { return $null }
     foreach ($p in $Object.PSObject.Properties) {
-        if ($p.Name -ieq $Name) { return [string]$p.Value }
+        if ($p.Name -ieq $Name) { return $p.Value }
     }
     return $null
+}
+
+function Get-ScalarProperty {
+    param($Object, [string]$Name)
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) { return $null }
+    return [string]$value
 }
 
 function Invoke-NoscDayQuery {
     param([datetime]$KstDate, [string]$Key)
     $dateText = $KstDate.ToString('yyyyMMdd')
     $url = $ApiEndpoint + '?ServiceKey=' + [uri]::EscapeDataString($Key) + '&startDate=' + $dateText + '&endDate=' + $dateText + '&slot=13&ResultType=json'
-    Write-Host ("조회: {0:yyyy-MM-dd} KST / slot=13" -f $KstDate)
+    Write-Host ("Query: {0:yyyy-MM-dd} KST / slot=13" -f $KstDate)
 
     try {
         $r = Invoke-RestMethod -Method Get -Uri $url -UseBasicParsing
     }
     catch {
-        throw "NOSC API 조회 실패 ($dateText): $($_.Exception.Message)"
+        throw "NOSC API query failed ($dateText): $($_.Exception.Message)"
     }
 
     $code = Get-ScalarProperty $r 'resultCode'
     if ($code -and $code -ne '200') {
         $msg = Get-ScalarProperty $r 'resultMsg'
-        throw "NOSC API 오류 $code : $msg"
+        throw "NOSC API error $code : $msg"
     }
 
-    $data = $r.data
+    $data = Get-PropertyValue $r 'data'
     if ($null -eq $data) { return @() }
 
     $result = @()
@@ -139,10 +146,10 @@ function Download-ToFile {
     $part = $Destination + '.part'
     Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
 
-    Write-Host "다운로드: $Url"
+    Write-Host "Download: $Url"
     if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
         & curl.exe -L --fail --retry 3 --retry-delay 3 --connect-timeout 30 --output $part $Url
-        if ($LASTEXITCODE -ne 0) { throw "curl.exe 종료코드 $LASTEXITCODE" }
+        if ($LASTEXITCODE -ne 0) { throw "curl.exe exit code $LASTEXITCODE" }
     }
     else {
         Invoke-WebRequest -Uri $Url -OutFile $part -UseBasicParsing
@@ -150,7 +157,7 @@ function Download-ToFile {
 
     if (-not (Test-NetCdfFile $part)) {
         Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
-        throw '응답이 NetCDF/HDF5 파일이 아닙니다.'
+        throw 'Response is not a NetCDF/HDF5 file.'
     }
 
     Move-Item -LiteralPath $part -Destination $Destination -Force
@@ -161,7 +168,7 @@ function Ensure-Downloaded {
     param($File)
     $destination = Join-Path $Output $File.FileName
     if (Test-NetCdfFile $destination) {
-        Write-Host "이미 존재: $($File.FileName)"
+        Write-Host "Already present: $($File.FileName)"
         return [pscustomobject]@{ FileName=$File.FileName; ObservationUtc=$File.ObservationUtc; SourceFilePath=$File.FilePath; DownloadUrl=$File.FilePath; Downloaded=$false; Bytes=(Get-Item $destination).Length }
     }
     if (Test-Path $destination) { Remove-Item -LiteralPath $destination -Force }
@@ -174,7 +181,7 @@ function Ensure-Downloaded {
     foreach ($url in ($urls | Select-Object -Unique)) {
         try {
             $bytes = Download-ToFile -Url $url -Destination $destination
-            Write-Host ("저장 완료: {0} ({1:N1} MiB)" -f $destination, ($bytes / 1MB))
+            Write-Host ("Saved: {0} ({1:N1} MiB)" -f $destination, ($bytes / 1MB))
             return [pscustomobject]@{ FileName=$File.FileName; ObservationUtc=$File.ObservationUtc; SourceFilePath=$File.FilePath; DownloadUrl=$url; Downloaded=$true; Bytes=$bytes }
         }
         catch {
@@ -182,7 +189,7 @@ function Ensure-Downloaded {
             Remove-Item -LiteralPath ($destination + '.part') -Force -ErrorAction SilentlyContinue
         }
     }
-    throw "다운로드 실패: $($File.FileName)`n$($errors -join "`n")"
+    throw "Download failed: $($File.FileName)`n$($errors -join "`n")"
 }
 
 function Prune-OldMosaics {
@@ -195,7 +202,7 @@ function Prune-OldMosaics {
     }
     foreach ($old in @($items | Sort-Object Utc -Descending | Select-Object -Skip $Keep)) {
         Remove-Item -LiteralPath $old.File.FullName -Force
-        Write-Host "삭제(보관개수 초과): $($old.File.Name)"
+        Write-Host "Pruned: $($old.File.Name)"
     }
 }
 
@@ -207,14 +214,14 @@ try {
     else { $baseDate = [datetime]::UtcNow.AddHours(9).Date }
 
     $files = @(Find-LatestMosaics -BaseDate $baseDate -Key $key)
-    if ($files.Count -eq 0) { throw '요청 기간에서 GOCI-II LA TSS Mosaic을 찾지 못했습니다.' }
+    if ($files.Count -eq 0) { throw 'No GOCI-II LA TSS mosaic was found in the requested date range.' }
 
     Write-Host ""
-    Write-Host "선택된 TSS Mosaic: $($files.Count)개"
+    Write-Host "Selected TSS mosaics: $($files.Count)"
     foreach ($f in $files) { Write-Host ("  {0:yyyy-MM-dd HH:mm:ss} UTC  {1}" -f $f.ObservationUtc, $f.FileName) }
 
     if ($DryRun) {
-        Write-Host "DryRun 완료: 다운로드/삭제를 수행하지 않았습니다."
+        Write-Host "DryRun completed. No files were downloaded or deleted."
         exit 0
     }
 
@@ -237,7 +244,7 @@ try {
         })
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Output 'goci2-download-manifest.json') -Encoding UTF8
-    Write-Host "완료."
+    Write-Host "Completed."
     exit 0
 }
 catch {
