@@ -1,19 +1,28 @@
 # GOCI-II TSS downloader
 
-`Goci2Downloader` is an **internet-side acquisition utility** for the offline MarineEnvironment deployment.
-It discovers recent GOCI-II Level-2 Local Area **TSS mosaic** products from the National Ocean Satellite Center (NOSC), downloads only the newest files, and leaves the resulting `.nc` files ready for controlled transfer to the offline system.
+The recommended internet-side acquisition path is now a **standalone PowerShell script**. Visual Studio, `dotnet build`, and the .NET SDK are not required to run it.
 
 The downloader is intentionally separate from `MarineEnvironment.dll`; the operational/offline machine does not need internet access or an API key.
 
-## NOSC OPEN API used
+## Build-free files
 
-Official NetCDF information API:
+- `tools/Goci2Downloader.ps1` — standalone downloader
+- `tools/RunGoci2Downloader.cmd` — simple launcher for Windows
+
+Requirements:
+
+- Windows PowerShell 5.1 or newer
+- Internet access to NOSC
+- NOSC OPEN API ServiceKey
+- `curl.exe` is used when available; otherwise PowerShell `Invoke-WebRequest` is used
+
+## NOSC OPEN API used
 
 ```text
 https://nosc.go.kr/openapi/GK2BNcMedia/search.do
 ```
 
-Request parameters used by this tool:
+Request parameters used:
 
 ```text
 ServiceKey=<issued API key>
@@ -23,32 +32,59 @@ slot=13
 ResultType=json
 ```
 
-NOSC documents slot `0..11` as individual GOCI-II slots and slot `13` as the Korean Peninsula whole-area product. The API does not document a `product=TSS` request filter, so the downloader queries slot 13 and filters the response locally for the exact mosaic filename form:
+The script filters the response locally for exact mosaic file names:
 
 ```text
 GK2B_GOCI2_L2_yyyyMMdd_HHmmss_LA_TSS.nc
 ```
 
-This deliberately excludes `..._LA_S000_TSS.nc` through `..._LA_S011_TSS.nc` slot files.
-
-The OPEN API response supplies `fileName`, `filePath`, `product`, and UTC/KST observation times. The downloader first tries the returned `filePath` as the source-file URL. If the Hyrax server does not permit direct source-file access, it also tries the standard Hyrax NetCDF-4 file-out service by appending `.nc4` to the dataset URL. In both cases the payload is accepted only when the file begins with a valid classic NetCDF or HDF5/NetCDF-4 signature.
+This excludes `..._LA_S000_TSS.nc` through `..._LA_S011_TSS.nc` slot files.
 
 ## Authentication
 
-Do not commit the API key to the repository. Preferred use:
+The key is never written to the repository or manifest.
+
+Preferred:
 
 ```powershell
 $env:NOSC_SERVICE_KEY = "<issued-key>"
-dotnet run --project src/Goci2Downloader -- --output D:\GOCI2\TSS --keep 5
 ```
 
-Or pass the key for a one-off execution:
+If the environment variable is missing, `Goci2Downloader.ps1` prompts for the ServiceKey interactively and keeps it only in memory.
+
+## First test: no download
 
 ```powershell
-dotnet run --project src/Goci2Downloader -- --service-key <issued-key> --output D:\GOCI2\TSS
+powershell -ExecutionPolicy Bypass -File .\tools\Goci2Downloader.ps1 `
+  -Output D:\GOCI2\TSS `
+  -Keep 5 `
+  -DryRun
 ```
 
-The key is used only in the OPEN API request and is not written to the manifest.
+Or from Command Prompt:
+
+```bat
+set NOSC_SERVICE_KEY=<issued-key>
+tools\RunGoci2Downloader.cmd -Output D:\GOCI2\TSS -Keep 5 -DryRun
+```
+
+## Actual download
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Goci2Downloader.ps1 `
+  -Output D:\GOCI2\TSS `
+  -Keep 5
+```
+
+Historical validation date:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Goci2Downloader.ps1 `
+  -Output D:\GOCI2\TSS `
+  -Keep 5 `
+  -AsOf 2026-09-15 `
+  -DryRun
+```
 
 ## Default behavior
 
@@ -59,11 +95,13 @@ query slot=13 one day at a time, newest to oldest
     ↓
 filter exact LA TSS mosaic products
     ↓
-stop when 5 newest mosaics are found
+stop when newest 5 mosaics are found
     ↓
-stream-download missing files
+download missing files to .part
     ↓
 validate NetCDF/HDF5 signature
+    ↓
+rename to final .nc
     ↓
 retain newest 5 local mosaic files
     ↓
@@ -79,35 +117,11 @@ Defaults:
 - old files matching only the exact GOCI-II TSS mosaic naming rule are pruned
 - unrelated `.nc` files are never pruned
 
-## Useful commands
-
-List what would be selected without downloading:
-
-```powershell
-dotnet run --project src/Goci2Downloader -- --dry-run
-```
-
-Historical API check:
-
-```powershell
-dotnet run --project src/Goci2Downloader -- --as-of 2026-09-15 --dry-run
-```
-
-Keep only three recent files:
-
-```powershell
-dotnet run --project src/Goci2Downloader -- --output D:\GOCI2\TSS --keep 3
-```
-
-Download without deleting older local files:
-
-```powershell
-dotnet run --project src/Goci2Downloader -- --output D:\GOCI2\TSS --no-prune
-```
+The API response's `filePath` is tried first. If that does not return a NetCDF payload, the script also tries the Hyrax NetCDF-4 file-out form by appending `.nc4`. A downloaded payload is accepted only when it begins with a classic NetCDF or HDF5/NetCDF-4 signature.
 
 ## Offline transfer
 
-After acquisition, transfer only the retained files and (optionally) the manifest to the offline data directory, for example:
+After acquisition, transfer the retained files and optionally the manifest to the offline data directory:
 
 ```text
 Database/GOCI2/TSS/
@@ -118,8 +132,12 @@ Database/GOCI2/TSS/
   goci2-download-manifest.json
 ```
 
-The offline turbidity source can then read these original mosaics at query time, filter invalid TSS pixels, aggregate the available TSS observations, and convert the resulting TSS to the project-derived turbidity value.
+The offline MarineEnvironment source can then read these original mosaics at query time and calculate the project-derived turbidity value.
 
-## Important limitation
+## Existing .NET console prototype
 
-API discovery and compilation can be tested without a NOSC key, but an end-to-end live download requires a valid issued key and current NOSC server access. If NOSC changes its download policy or disables both direct source-file access and the Hyrax NetCDF-4 file-out service, the tool will stop with an explicit non-NetCDF/HTTP error rather than save HTML or an error page as a `.nc` file.
+`src/Goci2Downloader` is retained for now as the compiled prototype created during the first implementation. It is **not required** for the PowerShell workflow above. If the script is adopted as the final acquisition method, the .NET console project can be removed later.
+
+## Validation status
+
+The PowerShell script does not require compilation. End-to-end live API/download validation still requires a valid NOSC ServiceKey; start with `-DryRun` before downloading 1 GB-class mosaic files.
