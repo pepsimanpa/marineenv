@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Output = (Join-Path $PSScriptRoot "GOCI2_TSS"),
+    [string]$Output,
     [ValidateRange(1,20)][int]$Keep = 5,
     [ValidateRange(1,31)][int]$LookbackDays = 7,
     [datetime]$AsOf,
@@ -13,6 +13,15 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+if ([string]::IsNullOrWhiteSpace($Output)) {
+    $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if ([string]::IsNullOrWhiteSpace($scriptDirectory)) {
+        $scriptDirectory = (Get-Location).Path
+    }
+    $Output = Join-Path $scriptDirectory "GOCI2_TSS"
+}
+$Output = [IO.Path]::GetFullPath($Output)
 
 $MosaicRegex = '^GK2B_GOCI2_L2_(?<date>\d{8})_(?<time>\d{6})_LA_TSS\.nc$'
 
