@@ -231,6 +231,7 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["cellsWithSourceValue"] = cellsWithValue;
             metadata["sourceNativeRaster"] = false;
             metadata["curvilinearGeolocation"] = true;
+            metadata["resolutionMode"] = "DisplayRaster";
             metadata["renderCache"] = "LastQuery";
 
             var result = new GridResult
