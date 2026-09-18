@@ -18,8 +18,9 @@ namespace MarineEnvironment.Sources.Goci2
     /// raster rather than a regular 1-D latitude/longitude grid.
     ///
     /// This class returns source TSS concentration from one selected mosaic. The public
-    /// Goci2Tss source path is wrapped by Goci2TurbidityDataSource, which combines up to
-    /// five mosaics at query time and converts the resulting mean TSS to derived turbidity.
+    /// Goci2Tss source path is wrapped by Goci2TssAggregateDataSource, which combines up to
+    /// five mosaics at query time. The aggregate TSS remains the source value; turbidity is
+    /// carried separately as a project-derived result.
     /// </summary>
     internal sealed class Goci2TssDataSource : IEnvironmentDataSource
     {
