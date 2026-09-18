@@ -263,8 +263,10 @@ namespace MarineEnvironment
                 throw new ArgumentException($"KHOA daily-current CSV source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
-            if (option.Format == DataSourceFormat.Goci2Tss && option.Type != EnvironmentType.Tss)
-                throw new ArgumentException($"GOCI-II TSS source '{option.Id}' must use type Tss.", nameof(option));
+            if (option.Format == DataSourceFormat.Goci2Tss
+                && option.Type != EnvironmentType.Tss
+                && option.Type != EnvironmentType.Turbidity)
+                throw new ArgumentException($"GOCI-II TSS source '{option.Id}' must use type Tss (legacy Turbidity is also accepted).", nameof(option));
             if (!string.IsNullOrWhiteSpace(option.SeabedMappingPath) && option.Format != DataSourceFormat.ShomSeabed)
                 throw new ArgumentException($"seabedMappingPath is currently supported only by ShomSeabed sources ('{option.Id}').", nameof(option));
 
