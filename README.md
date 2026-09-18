@@ -22,6 +22,7 @@ The library supports generic NetCDF sources plus verified special-source readers
 - FES2014a tidal-current harmonic synthesis
 - SHOM categorical seabed sediment polygons and optional user-defined operational mapping
 - Martin et al. (2015) global seafloor sediment porosity grid
+- GOCI-II Level-2 Local Area mosaic TSS input with query-time derived turbidity
 
 Current source targets include:
 
@@ -29,8 +30,41 @@ Current source targets include:
 - WOA23 temperature and salinity
 - GDEM-V temperature and salinity
 - FES2014a tidal currents
+- GOCI-II TSS-derived turbidity
 - Martin et al. (2015) global seafloor sediment porosity
 - SHOM worldwide seabed sediment map
+
+## GOCI-II TSS-derived turbidity
+
+The GOCI-II source is designed for an offline workflow. Original `..._LA_TSS.nc` mosaic files remain on disk; the library does **not** generate a separate averaged database.
+
+At query time it:
+
+1. selects up to five LA mosaic files,
+2. reads the TSS value for the requested point/cell from each file,
+3. excludes pixels flagged as Cloud/Ice, Land, AC_Fail, or TSS_Fail,
+4. calculates the arithmetic mean of the remaining TSS observations,
+5. derives turbidity with the project-selected relation `Turbidity_NTU = 0.3671 * TSS_mg/L`.
+
+GOCI-II TSS is `g/m^3`, which is numerically equal to `mg/L`. The resulting NTU is therefore a **derived project value**, not a direct GOCI-II turbidity observation. Metadata records the selected/used files, TSS samples, mean TSS, quality filtering, conversion factor, and the site-specific scope of the selected relation.
+
+Example configuration:
+
+```json
+{
+  "id": "GOCI2_TURBIDITY",
+  "type": "Turbidity",
+  "format": "Goci2Tss",
+  "enabled": true,
+  "path": "../Database/GOCI2/TSS",
+  "variable": "TSS",
+  "latitudeVariable": "latitude",
+  "longitudeVariable": "longitude",
+  "unit": "NTU"
+}
+```
+
+If more than five mosaics are present, the five observations nearest to the requested time are used; without a requested time, the latest five are used.
 
 ## Martin et al. (2015) global seafloor porosity
 
