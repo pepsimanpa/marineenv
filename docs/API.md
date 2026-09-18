@@ -135,3 +135,27 @@ double? value = grid.GetValue(row, column);
 `Maximum`, `Unit`, `Variable`, and source metadata. Grid queries remain
 source-raster oriented; the unified derived contract currently applies to point
 queries.
+
+
+## 5. Query concurrency and GOCI-II warm-up
+
+Public `Query`, `QuerySource`, and `QueryGrid` calls are serialized inside
+`MarineEnvironmentManager`. This is intentional because the library shares source-reader
+state and native NetCDF-C access. Callers may invoke the public API from different threads,
+but the manager executes source access one request at a time.
+
+The validation viewer also ignores an additional map click while a point query is already
+running so overlapping native reads are not started accidentally.
+
+GOCI-II uses a 2-D curvilinear latitude/longitude grid. The first time a navigation geometry
+is encountered, MarineEnvironment builds a coarse geolocation index with strided NetCDF
+reads. The index is then:
+
+- shared by all selected GOCI-II mosaic readers in the process,
+- persisted in the user's local application-data cache,
+- validated against navigation sentinel cells before reuse,
+- loaded during later source initialization when a valid persistent cache exists.
+
+The nearest source pixel for a point query is also shared across the selected GOCI-II
+mosaics, so latitude/longitude refinement is performed once per queried coordinate rather
+than once per mosaic. The original NetCDF files remain unchanged.
