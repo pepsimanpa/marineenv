@@ -825,6 +825,62 @@ namespace MarineEnvironment.Sources.Goci2
             public int ColumnEnd { get; }
         }
 
+        private sealed class GridProjection
+        {
+            public GridProjection(
+                int sourceRows,
+                int sourceColumns,
+                int outputWidth,
+                int outputHeight,
+                int candidateCount,
+                ProjectionCandidate[] candidates,
+                byte[] counts)
+            {
+                SourceRows = sourceRows;
+                SourceColumns = sourceColumns;
+                OutputWidth = outputWidth;
+                OutputHeight = outputHeight;
+                CandidateCount = candidateCount;
+                Candidates = candidates;
+                Counts = counts;
+            }
+
+            public int SourceRows { get; }
+            public int SourceColumns { get; }
+            public int OutputWidth { get; }
+            public int OutputHeight { get; }
+            public int CandidateCount { get; }
+            public ProjectionCandidate[] Candidates { get; }
+            public byte[] Counts { get; }
+        }
+
+        private sealed class ProjectionRowPlan
+        {
+            public ProjectionRowPlan(int minColumn, int maxColumn)
+            {
+                MinColumn = minColumn;
+                MaxColumn = maxColumn;
+            }
+
+            public int MinColumn { get; set; }
+            public int MaxColumn { get; set; }
+            public List<int> CandidateSlots { get; } = new List<int>();
+        }
+
+        private readonly struct ProjectionCandidate
+        {
+            public ProjectionCandidate(int row, int column, double distance2)
+            {
+                Row = row;
+                Column = column;
+                Distance2 = distance2;
+            }
+
+            public int Row { get; }
+            public int Column { get; }
+            public double Distance2 { get; }
+        }
+
         private readonly struct MosaicFile
         {
             public MosaicFile(string path, DateTime observationUtc) { Path = path; ObservationUtc = observationUtc; }
