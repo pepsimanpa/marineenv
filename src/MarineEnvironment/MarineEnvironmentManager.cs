@@ -18,6 +18,9 @@ namespace MarineEnvironment
     public sealed partial class MarineEnvironmentManager : IDisposable
     {
         private readonly object _sync = new object();
+        // NetCDF-C and several source readers are intentionally serialized at the public query boundary.
+        // This prevents overlapping point/grid requests from using the same native/source state concurrently.
+        private readonly object _querySync = new object();
         private readonly Dictionary<string, IEnvironmentDataSource> _sources = new Dictionary<string, IEnvironmentDataSource>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, SeabedMappingLookup> _seabedMappings = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase);
         private bool _disposed;
@@ -110,46 +113,50 @@ namespace MarineEnvironment
 
         public EnvironmentQueryResult Query(EnvironmentQuery query)
         {
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
-            ValidateQuery(query);
-            ThrowIfDisposed();
-
-            IEnvironmentDataSource[] sourceSnapshot;
-            Dictionary<string, SeabedMappingLookup> mappingSnapshot;
-            lock (_sync)
+            lock (_querySync)
             {
-                sourceSnapshot = _sources.Values.Where(x => x.Status == SourceStatus.Ready).ToArray();
-                mappingSnapshot = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
+                if (query == null)
+                    throw new ArgumentNullException(nameof(query));
+                ValidateQuery(query);
+                ThrowIfDisposed();
+    
+                IEnvironmentDataSource[] sourceSnapshot;
+                Dictionary<string, SeabedMappingLookup> mappingSnapshot;
+                lock (_sync)
+                {
+                    sourceSnapshot = _sources.Values.Where(x => x.Status == SourceStatus.Ready).ToArray();
+                    mappingSnapshot = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
+                }
+    
+                var sourceValues = new List<EnvironmentValue>(sourceSnapshot.Length);
+                var derivedValues = new List<EnvironmentValue>();
+    
+                foreach (var source in sourceSnapshot)
+                {
+                    var value = source.Query(query);
+                    if (value == null)
+                        continue;
+    
+                    // Preserve the DB/product value exactly as the source reader returned it.
+                    sourceValues.Add(value);
+                    AppendDirectDerivedValues(value, mappingSnapshot, derivedValues);
+                }
+    
+                // Cross-source project model: ETOPO terrain + Martin porosity.
+                AppendEstimatedSeabedCategorical(derivedValues, sourceSnapshot, query);
+    
+                return new EnvironmentQueryResult
+                {
+                    RequestedLatitude = query.Latitude,
+                    RequestedLongitude = query.Longitude,
+                    RequestedDepth = query.Depth,
+                    RequestedDateTime = query.DateTime,
+                    Sampling = query.Sampling,
+                    SourceValues = sourceValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray(),
+                    DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
+                };
+            
             }
-
-            var sourceValues = new List<EnvironmentValue>(sourceSnapshot.Length);
-            var derivedValues = new List<EnvironmentValue>();
-
-            foreach (var source in sourceSnapshot)
-            {
-                var value = source.Query(query);
-                if (value == null)
-                    continue;
-
-                // Preserve the DB/product value exactly as the source reader returned it.
-                sourceValues.Add(value);
-                AppendDirectDerivedValues(value, mappingSnapshot, derivedValues);
-            }
-
-            // Cross-source project model: ETOPO terrain + Martin porosity.
-            AppendEstimatedSeabedCategorical(derivedValues, sourceSnapshot, query);
-
-            return new EnvironmentQueryResult
-            {
-                RequestedLatitude = query.Latitude,
-                RequestedLongitude = query.Longitude,
-                RequestedDepth = query.Depth,
-                RequestedDateTime = query.DateTime,
-                Sampling = query.Sampling,
-                SourceValues = sourceValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray(),
-                DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
-            };
         }
 
         /// <summary>
@@ -159,30 +166,34 @@ namespace MarineEnvironment
         /// </summary>
         public EnvironmentSourceQueryResult QuerySource(string sourceId, EnvironmentQuery query)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
-            ValidateQuery(query);
-            ThrowIfDisposed();
-
-            var value = GetReadySource(sourceId).Query(query);
-            var derivedValues = new List<EnvironmentValue>();
-
-            if (value != null)
+            lock (_querySync)
             {
-                Dictionary<string, SeabedMappingLookup> mappings;
-                lock (_sync)
-                    mappings = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
-                AppendDirectDerivedValues(value, mappings, derivedValues);
+                if (string.IsNullOrWhiteSpace(sourceId))
+                    throw new ArgumentException("Source id is required.", nameof(sourceId));
+                if (query == null)
+                    throw new ArgumentNullException(nameof(query));
+                ValidateQuery(query);
+                ThrowIfDisposed();
+    
+                var value = GetReadySource(sourceId).Query(query);
+                var derivedValues = new List<EnvironmentValue>();
+    
+                if (value != null)
+                {
+                    Dictionary<string, SeabedMappingLookup> mappings;
+                    lock (_sync)
+                        mappings = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
+                    AppendDirectDerivedValues(value, mappings, derivedValues);
+                }
+    
+                return new EnvironmentSourceQueryResult
+                {
+                    SourceId = sourceId,
+                    SourceValue = value,
+                    DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
+                };
+            
             }
-
-            return new EnvironmentSourceQueryResult
-            {
-                SourceId = sourceId,
-                SourceValue = value,
-                DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
-            };
         }
 
         /// <summary>
@@ -311,14 +322,18 @@ namespace MarineEnvironment
 
         public GridResult QueryGrid(string sourceId, GridQuery query)
         {
-            if (string.IsNullOrWhiteSpace(sourceId))
-                throw new ArgumentException("Source id is required.", nameof(sourceId));
-            if (query == null)
-                throw new ArgumentNullException(nameof(query));
-            ValidateGridQuery(query);
-            ThrowIfDisposed();
-
-            return GetReadySource(sourceId).QueryGrid(query);
+            lock (_querySync)
+            {
+                if (string.IsNullOrWhiteSpace(sourceId))
+                    throw new ArgumentException("Source id is required.", nameof(sourceId));
+                if (query == null)
+                    throw new ArgumentNullException(nameof(query));
+                ValidateGridQuery(query);
+                ThrowIfDisposed();
+    
+                return GetReadySource(sourceId).QueryGrid(query);
+            
+            }
         }
 
         private static EnvironmentValue ApplySeabedMapping(EnvironmentValue value, IReadOnlyDictionary<string, SeabedMappingLookup> mappings)
