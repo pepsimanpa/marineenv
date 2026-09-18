@@ -24,7 +24,12 @@ namespace MarineEnvironment.Models
         NetCdf,
         Fes2014Current,
         KhoaDailyCurrentCsv,
-        ShomSeabed
+        ShomSeabed,
+        /// <summary>
+        /// GOCI-II L2 LA TSS mosaic input. In this project it is exposed as derived
+        /// turbidity after query-time multi-file TSS averaging.
+        /// </summary>
+        Goci2Tss
     }
 
     public enum SourceStatus

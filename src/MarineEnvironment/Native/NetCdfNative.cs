@@ -17,6 +17,9 @@ namespace MarineEnvironment.Native
         internal static extern int nc_close(int ncid);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int nc_inq_ncid(int ncid, string name, out int grp_ncid);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int nc_inq_varid(int ncid, string name, out int varidp);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
