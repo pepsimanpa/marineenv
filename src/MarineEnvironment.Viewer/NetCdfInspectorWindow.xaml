@@ -7,6 +7,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="190"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -132,7 +133,32 @@
             </Border>
         </Grid>
 
-        <StatusBar Grid.Row="2" Margin="0,10,0,0">
+        <Border Grid.Row="2" Margin="0,10,0,0" BorderBrush="#D0D7DE" BorderThickness="1" CornerRadius="6" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Export output" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Margin="12,0,0,0" Padding="12,5" Click="ShowTextExport_Click">Show Text</Button>
+                    <Button Grid.Column="2" Margin="8,0,0,0" Padding="12,5" Click="ShowJsonExport_Click">Show JSON</Button>
+                    <Button Grid.Column="3" HorizontalAlignment="Right" Padding="14,5" Click="CopyExport_Click" FontWeight="SemiBold">Copy</Button>
+                </Grid>
+                <TextBox x:Name="ExportOutputTextBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
+                         Background="#F6F8FA" BorderBrush="#D8DEE4"/>
+            </Grid>
+        </Border>
+
+        <StatusBar Grid.Row="3" Margin="0,10,0,0">
             <StatusBarItem><TextBlock x:Name="InspectorStatusText" Text="Open a .nc file to inspect its raw structure."/></StatusBarItem>
         </StatusBar>
     </Grid>
