@@ -31,6 +31,24 @@
       }
     },
     {
+      "id": "BADA2024_BATHYMETRY",
+      "type": "Bathymetry",
+      "format": "BadaBathymetry",
+      "enabled": false,
+      "path": "../Database/BADA/BADA2024_격자형수심_v1.1.nc",
+      "variable": "MSL",
+      "latitudeVariable": "LAT",
+      "longitudeVariable": "LON",
+      "unit": "m",
+      "maxNearestDistanceKm": 10.0,
+      "metadata": {
+        "dataset": "BADA2024 격자형수심 v1.1",
+        "verticalReference": "MSL",
+        "nativeGeometry": "paired LAT/LON/MSL point records",
+        "note": "LAT[i], LON[i], MSL[i] form one source-native bathymetry sample; no common-grid resampling is performed in the source."
+      }
+    },
+    {
       "id": "ETOPO2022",
       "type": "Bathymetry",
       "format": "NetCdf",
