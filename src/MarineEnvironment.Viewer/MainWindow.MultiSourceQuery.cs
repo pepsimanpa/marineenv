@@ -11,10 +11,18 @@ namespace MarineEnvironment.Viewer
 {
     public partial class MainWindow
     {
+        private bool _pointQueryInProgress;
+
         private async Task QueryAllSourcesAtViewportPosition(Point position)
         {
             if (_currentGrid == null)
                 return;
+
+            if (_pointQueryInProgress)
+            {
+                PointQueryText.Text = "Point query already running...";
+                return;
+            }
 
             if (!TryGetRasterCellFromViewport(position, out var row, out var column))
                 return;
@@ -30,6 +38,7 @@ namespace MarineEnvironment.Viewer
                 depth = parsedDepth;
             }
 
+            _pointQueryInProgress = true;
             try
             {
                 PointQueryText.Text = "Querying all READY sources...";
@@ -72,6 +81,10 @@ namespace MarineEnvironment.Viewer
             {
                 PointQueryText.Text = $"Point query error: {ex.Message}";
                 StatusText.Text = "Point query failed.";
+            }
+            finally
+            {
+                _pointQueryInProgress = false;
             }
         }
 
