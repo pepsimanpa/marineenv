@@ -320,6 +320,212 @@ namespace MarineEnvironment.Sources.Goci2
             return true;
         }
 
+        private GridProjection GetOrBuildGridProjection(
+            string filePath,
+            GeoIndex index,
+            GridQuery query,
+            double[] latitudes,
+            double[] longitudes)
+        {
+            var key = BuildGridProjectionKey(filePath, query);
+            lock (SharedNavigationSync)
+            {
+                if (_sharedProjection != null
+                    && string.Equals(_sharedProjectionKey, key, StringComparison.Ordinal)
+                    && _sharedProjection.SourceRows == index.Rows
+                    && _sharedProjection.SourceColumns == index.Columns)
+                {
+                    return _sharedProjection;
+                }
+            }
+
+            var built = BuildGridProjection(filePath, index, query, latitudes, longitudes);
+            lock (SharedNavigationSync)
+            {
+                _sharedProjectionKey = key;
+                _sharedProjection = built;
+            }
+            return built;
+        }
+
+        private string BuildGridProjectionKey(string filePath, GridQuery query)
+        {
+            return string.Join("|",
+                BuildSharedNavigationKey(filePath),
+                query.MinLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MinLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.Width.ToString(CultureInfo.InvariantCulture),
+                query.Height.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static GridProjection BuildGridProjection(
+            string filePath,
+            GeoIndex index,
+            GridQuery query,
+            double[] latitudes,
+            double[] longitudes)
+        {
+            var outputCellCount = checked(query.Width * query.Height);
+            var candidateCount = outputCellCount > 1_000_000 ? 2 : ProjectionCandidateCount;
+            var candidates = new ProjectionCandidate[checked(outputCellCount * candidateCount)];
+            var counts = new byte[outputCellCount];
+
+            SourceWindow window;
+            if (!TryGetSourceWindow(index, query, out window))
+                return new GridProjection(index.Rows, index.Columns, query.Width, query.Height, candidateCount, candidates, counts);
+
+            using var file = Open(filePath);
+            var optionless = file.Id;
+            // Navigation variable IDs are resolved directly because this projection is shared
+            // across all mosaics with the same LA geometry.
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(optionless, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, DefaultLatitudeVariable, out var latitudeVariableId), "Find GOCI-II latitude variable");
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, DefaultLongitudeVariable, out var longitudeVariableId), "Find GOCI-II longitude variable");
+
+            for (var row = window.RowStart; row <= window.RowEnd; row += GridBlockRows)
+            {
+                var rowCount = Math.Min(GridBlockRows, window.RowEnd - row + 1);
+                var colCount = window.ColumnEnd - window.ColumnStart + 1;
+                var lats = ReadBlock(navigationGroupId, latitudeVariableId, row, rowCount, window.ColumnStart, colCount);
+                var lons = ReadBlock(navigationGroupId, longitudeVariableId, row, rowCount, window.ColumnStart, colCount);
+
+                for (var localRow = 0; localRow < rowCount; localRow++)
+                {
+                    for (var localCol = 0; localCol < colCount; localCol++)
+                    {
+                        var sourceIndex = (localRow * colCount) + localCol;
+                        var lat = lats[sourceIndex];
+                        var lon = lons[sourceIndex];
+                        if (!IsValidCoordinate(lat, lon)) continue;
+                        if (lat < query.MinLatitude || lat > query.MaxLatitude || lon < query.MinLongitude || lon > query.MaxLongitude)
+                            continue;
+
+                        var outputRow = NearestOutputIndexDescending(latitudes, lat);
+                        var outputColumn = NearestOutputIndexAscending(longitudes, lon);
+                        var outputIndex = (outputRow * query.Width) + outputColumn;
+                        var distance2 = GeographicDistanceSquaredKm(lat, lon, latitudes[outputRow], longitudes[outputColumn]);
+
+                        InsertProjectionCandidate(
+                            candidates,
+                            counts,
+                            candidateCount,
+                            outputIndex,
+                            new ProjectionCandidate(row + localRow, window.ColumnStart + localCol, distance2));
+                    }
+                }
+            }
+
+            return new GridProjection(index.Rows, index.Columns, query.Width, query.Height, candidateCount, candidates, counts);
+        }
+
+        private static void InsertProjectionCandidate(
+            ProjectionCandidate[] candidates,
+            byte[] counts,
+            int candidateCount,
+            int outputIndex,
+            ProjectionCandidate candidate)
+        {
+            var baseIndex = outputIndex * candidateCount;
+            var count = counts[outputIndex];
+            var insertAt = count;
+
+            for (var i = 0; i < count; i++)
+            {
+                if (candidate.Distance2 < candidates[baseIndex + i].Distance2)
+                {
+                    insertAt = i;
+                    break;
+                }
+            }
+
+            if (count >= candidateCount && insertAt >= candidateCount)
+                return;
+
+            var newCount = Math.Min(candidateCount, count + 1);
+            for (var i = newCount - 1; i > insertAt; i--)
+                candidates[baseIndex + i] = candidates[baseIndex + i - 1];
+
+            candidates[baseIndex + insertAt] = candidate;
+            counts[outputIndex] = (byte)newCount;
+        }
+
+        private static double?[] ReadProjectedTss(FileContext context, GridProjection projection)
+        {
+            var candidateValues = new double?[projection.Candidates.Length];
+            var rowPlans = new Dictionary<int, ProjectionRowPlan>();
+
+            for (var outputIndex = 0; outputIndex < projection.Counts.Length; outputIndex++)
+            {
+                var count = projection.Counts[outputIndex];
+                var baseIndex = outputIndex * projection.CandidateCount;
+                for (var i = 0; i < count; i++)
+                {
+                    var slot = baseIndex + i;
+                    var candidate = projection.Candidates[slot];
+                    ProjectionRowPlan plan;
+                    if (!rowPlans.TryGetValue(candidate.Row, out plan))
+                    {
+                        plan = new ProjectionRowPlan(candidate.Column, candidate.Column);
+                        rowPlans.Add(candidate.Row, plan);
+                    }
+                    else
+                    {
+                        if (candidate.Column < plan.MinColumn) plan.MinColumn = candidate.Column;
+                        if (candidate.Column > plan.MaxColumn) plan.MaxColumn = candidate.Column;
+                    }
+                    plan.CandidateSlots.Add(slot);
+                }
+            }
+
+            foreach (var pair in rowPlans)
+            {
+                var row = pair.Key;
+                var plan = pair.Value;
+                var columnCount = plan.MaxColumn - plan.MinColumn + 1;
+                var tss = ReadBlock(context.GeophysicalGroupId, context.TssVariableId, row, 1, plan.MinColumn, columnCount);
+                var flags = context.FlagVariableId.HasValue
+                    ? ReadBlock(context.GeophysicalGroupId, context.FlagVariableId.Value, row, 1, plan.MinColumn, columnCount)
+                    : null;
+
+                foreach (var slot in plan.CandidateSlots)
+                {
+                    var candidate = projection.Candidates[slot];
+                    var localColumn = candidate.Column - plan.MinColumn;
+                    var value = TransformTss(context, tss[localColumn]);
+                    if (!value.HasValue)
+                        continue;
+
+                    if (flags != null)
+                    {
+                        var flag = (int)Math.Round(flags[localColumn]);
+                        if ((flag & InvalidQualityMask) != 0)
+                            continue;
+                    }
+
+                    candidateValues[slot] = value.Value;
+                }
+            }
+
+            var result = new double?[projection.Counts.Length];
+            for (var outputIndex = 0; outputIndex < result.Length; outputIndex++)
+            {
+                var count = projection.Counts[outputIndex];
+                var baseIndex = outputIndex * projection.CandidateCount;
+                for (var i = 0; i < count; i++)
+                {
+                    var value = candidateValues[baseIndex + i];
+                    if (!value.HasValue)
+                        continue;
+                    result[outputIndex] = value.Value;
+                    break;
+                }
+            }
+
+            return result;
+        }
+
         private FileContext OpenContext(int rootId)
         {
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(rootId, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
