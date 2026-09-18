@@ -221,30 +221,61 @@ namespace MarineEnvironment.Sources.Goci2
             {
                 if (_geoIndex != null && string.Equals(_geoIndexFile, filePath, StringComparison.OrdinalIgnoreCase))
                     return _geoIndex;
-
-                using var file = Open(filePath);
-                using var context = OpenContext(file.Id);
-                var samples = new List<GeoSample>((context.Rows / GeoIndexStride + 1) * (context.Columns / GeoIndexStride + 1));
-                var latRow = new double[context.Columns];
-                var lonRow = new double[context.Columns];
-                for (var row = 0; row < context.Rows; row += GeoIndexStride)
-                {
-                    ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
-                    ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
-                    for (var column = 0; column < context.Columns; column += GeoIndexStride)
-                    {
-                        var lat = latRow[column];
-                        var lon = lonRow[column];
-                        if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
-                    }
-                }
-                if ((context.Rows - 1) % GeoIndexStride != 0)
-                    AppendIndexRow(context, context.Rows - 1, samples, latRow, lonRow);
-
-                _geoIndex = new GeoIndex(context.Rows, context.Columns, samples);
-                _geoIndexFile = filePath;
-                return _geoIndex;
             }
+
+            var sharedKey = BuildSharedNavigationKey(filePath);
+            lock (SharedNavigationSync)
+            {
+                GeoIndex shared;
+                if (SharedGeoIndexes.TryGetValue(sharedKey, out shared))
+                {
+                    lock (_indexSync)
+                    {
+                        _geoIndex = shared;
+                        _geoIndexFile = filePath;
+                    }
+                    return shared;
+                }
+            }
+
+            using var file = Open(filePath);
+            using var context = OpenContext(file.Id);
+            var samples = new List<GeoSample>((context.Rows / GeoIndexStride + 1) * (context.Columns / GeoIndexStride + 1));
+            var latRow = new double[context.Columns];
+            var lonRow = new double[context.Columns];
+            for (var row = 0; row < context.Rows; row += GeoIndexStride)
+            {
+                ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
+                ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
+                for (var column = 0; column < context.Columns; column += GeoIndexStride)
+                {
+                    var lat = latRow[column];
+                    var lon = lonRow[column];
+                    if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
+                }
+            }
+            if ((context.Rows - 1) % GeoIndexStride != 0)
+                AppendIndexRow(context, context.Rows - 1, samples, latRow, lonRow);
+
+            var built = new GeoIndex(context.Rows, context.Columns, samples);
+            lock (SharedNavigationSync)
+            {
+                SharedGeoIndexes[sharedKey] = built;
+            }
+            lock (_indexSync)
+            {
+                _geoIndex = built;
+                _geoIndexFile = filePath;
+            }
+            return built;
+        }
+
+        private string BuildSharedNavigationKey(string filePath)
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? string.Empty;
+            var latitudeName = string.IsNullOrWhiteSpace(_option.LatitudeVariable) ? DefaultLatitudeVariable : _option.LatitudeVariable;
+            var longitudeName = string.IsNullOrWhiteSpace(_option.LongitudeVariable) ? DefaultLongitudeVariable : _option.LongitudeVariable;
+            return directory + "|" + latitudeName + "|" + longitudeName;
         }
 
         private static void AppendIndexRow(FileContext context, int row, List<GeoSample> samples, double[] latRow, double[] lonRow)
