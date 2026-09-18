@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
@@ -31,6 +33,9 @@ namespace MarineEnvironment.Sources.Goci2
         private const string DefaultLongitudeVariable = "longitude";
         private const string FlagVariable = "flag";
         private const int GeoIndexStride = 20;
+        private const int GeoIndexCacheVersion = 1;
+        private const int GeoIndexSentinelCount = 5;
+        private const int MaximumPointMatchCacheEntries = 512;
         private const int GridBlockRows = 64;
         private const double MaxPointDistanceKm = 1.0;
         private const int InvalidQualityMask = 0x0F; // Cloud/Ice, Land, AC_Fail, TSS_Fail
@@ -43,6 +48,8 @@ namespace MarineEnvironment.Sources.Goci2
         private static readonly object SharedNavigationSync = new object();
         private static readonly Dictionary<string, GeoIndex> SharedGeoIndexes =
             new Dictionary<string, GeoIndex>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, PixelMatch?> SharedPointMatches =
+            new Dictionary<string, PixelMatch?>(StringComparer.Ordinal);
         private static string? _sharedProjectionKey;
         private static GridProjection? _sharedProjection;
 
