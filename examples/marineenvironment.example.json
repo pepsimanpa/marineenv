@@ -110,6 +110,27 @@
       }
     },
     {
+      "id": "GOCI2_TURBIDITY",
+      "type": "Turbidity",
+      "format": "Goci2Tss",
+      "enabled": false,
+      "path": "../Database/GOCI2/TSS",
+      "variable": "TSS",
+      "latitudeVariable": "latitude",
+      "longitudeVariable": "longitude",
+      "unit": "NTU",
+      "metadata": {
+        "dataset": "GK2B GOCI-II Level-2 Local Area TSS mosaics",
+        "sourceProduct": "Total Suspended Solids concentration",
+        "derivedProduct": "Turbidity",
+        "aggregation": "Query-time arithmetic mean of up to five LA mosaic files",
+        "conversion": "Turbidity_NTU = 0.3671 * TSS_mg/L",
+        "conversionModel": "KIOST_GOMSO_TSS_TURBIDITY_LINEAR",
+        "nominalSpatialResolution": "250 m",
+        "note": "Place original ..._LA_TSS.nc mosaic files in this directory. Invalid quality pixels are excluded; no averaged DB is generated."
+      }
+    },
+    {
       "id": "MARTIN2015_POROSITY",
       "type": "Porosity",
       "format": "NetCdf",
