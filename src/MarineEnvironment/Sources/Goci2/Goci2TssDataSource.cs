@@ -430,7 +430,7 @@ namespace MarineEnvironment.Sources.Goci2
             ProjectionCandidate candidate)
         {
             var baseIndex = outputIndex * candidateCount;
-            var count = counts[outputIndex];
+            var count = (int)counts[outputIndex];
             var insertAt = count;
 
             for (var i = 0; i < count; i++)
