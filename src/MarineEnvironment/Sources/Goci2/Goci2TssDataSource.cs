@@ -165,7 +165,7 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["curvilinearGeolocation"] = true;
             metadata["qualityMask"] = "Cloud_or_Ice | Land | AC_Fail | TSS_Fail";
             metadata["navigationProjectionCache"] = true;
-            metadata["projectionCandidateCount"] = ProjectionCandidateCount;
+            metadata["projectionCandidateCount"] = projection.CandidateCount;
             metadata["validRenderedCells"] = validCells;
 
             return new GridResult
@@ -360,7 +360,7 @@ namespace MarineEnvironment.Sources.Goci2
                 query.Height.ToString(CultureInfo.InvariantCulture));
         }
 
-        private static GridProjection BuildGridProjection(
+        private GridProjection BuildGridProjection(
             string filePath,
             GeoIndex index,
             GridQuery query,
@@ -381,8 +381,10 @@ namespace MarineEnvironment.Sources.Goci2
             // Navigation variable IDs are resolved directly because this projection is shared
             // across all mosaics with the same LA geometry.
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(optionless, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
-            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, DefaultLatitudeVariable, out var latitudeVariableId), "Find GOCI-II latitude variable");
-            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, DefaultLongitudeVariable, out var longitudeVariableId), "Find GOCI-II longitude variable");
+            var latitudeName = string.IsNullOrWhiteSpace(_option.LatitudeVariable) ? DefaultLatitudeVariable : _option.LatitudeVariable;
+            var longitudeName = string.IsNullOrWhiteSpace(_option.LongitudeVariable) ? DefaultLongitudeVariable : _option.LongitudeVariable;
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, latitudeName, out var latitudeVariableId), $"Find GOCI-II latitude variable '{latitudeName}'");
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, longitudeName, out var longitudeVariableId), $"Find GOCI-II longitude variable '{longitudeName}'");
 
             for (var row = window.RowStart; row <= window.RowEnd; row += GridBlockRows)
             {
