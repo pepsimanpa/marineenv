@@ -11,10 +11,18 @@ namespace MarineEnvironment.Viewer
 {
     public partial class MainWindow
     {
+        private bool _pointQueryInProgress;
+
         private async Task QueryAllSourcesAtViewportPosition(Point position)
         {
             if (_currentGrid == null)
                 return;
+
+            if (_pointQueryInProgress)
+            {
+                PointQueryText.Text = "Point query already running...";
+                return;
+            }
 
             if (!TryGetRasterCellFromViewport(position, out var row, out var column))
                 return;
@@ -30,6 +38,7 @@ namespace MarineEnvironment.Viewer
                 depth = parsedDepth;
             }
 
+            _pointQueryInProgress = true;
             try
             {
                 PointQueryText.Text = "Querying all READY sources...";
@@ -41,16 +50,15 @@ namespace MarineEnvironment.Viewer
                     DateTime = date
                 }));
 
-                var derivedRows = result.Values.SelectMany(CreateDerivedRows).ToArray();
+                var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToArray();
 
-                PointQueryText.Text = derivedRows.Length == 0
-                    ? $"Point API: {result.Count} value(s)"
-                    : $"Point API: {result.Count} value(s) / {derivedRows.Length} derived";
+                PointQueryText.Text =
+                    $"Point API: {result.SourceCount} source / {result.DerivedCount} derived";
                 PointResultsHeaderText.Text = $"Requested: {result.RequestedLatitude:0.#####}, {result.RequestedLongitude:0.#####}"
                     + (result.RequestedDepth.HasValue ? $"  |  Depth {result.RequestedDepth:0.###} m" : string.Empty)
                     + $"  |  {result.RequestedDateTime:yyyy-MM-dd}";
 
-                PointResultsGrid.ItemsSource = result.Values.Select(x => new PointResultRow
+                PointResultsGrid.ItemsSource = result.SourceValues.Select(x => new PointResultRow
                 {
                     Type = x.Type.ToString(),
                     Source = x.SourceId,
@@ -66,61 +74,58 @@ namespace MarineEnvironment.Viewer
                 DerivedResultsGrid.ItemsSource = derivedRows;
                 DerivedResultsPanel.Visibility = derivedRows.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
                 PointResultsPanel.Visibility = Visibility.Visible;
-                StatusText.Text = derivedRows.Length == 0
-                    ? $"Point query returned {result.Count} value(s) from READY sources."
-                    : $"Point query returned {result.Count} value(s) and {derivedRows.Length} derived/estimated result(s).";
+                StatusText.Text =
+                    $"Point query returned {result.SourceCount} source value(s) and {result.DerivedCount} derived/estimated value(s).";
             }
             catch (Exception ex)
             {
                 PointQueryText.Text = $"Point query error: {ex.Message}";
                 StatusText.Text = "Point query failed.";
             }
+            finally
+            {
+                _pointQueryInProgress = false;
+            }
         }
 
         private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)
         {
-            if (value.Type == EnvironmentType.Tss
-                && value.Metadata != null
-                && value.Metadata.TryGetValue("derivedTurbidityNtu", out var derivedTurbidity)
-                && derivedTurbidity != null)
+            if (value.Type == EnvironmentType.Turbidity && value.Value is double turbidity)
             {
-                var ntu = Convert.ToDouble(derivedTurbidity, CultureInfo.InvariantCulture);
-                var factor = value.Metadata.TryGetValue("tssToTurbidityFactor", out var factorValue) && factorValue != null
-                    ? Convert.ToDouble(factorValue, CultureInfo.InvariantCulture)
-                    : 0.3671;
-                var validCount = value.Metadata.TryGetValue("validObservationCount", out var countValue) && countValue != null
-                    ? Convert.ToInt32(countValue, CultureInfo.InvariantCulture)
-                    : 0;
-                var meanTss = Convert.ToDouble(value.Value, CultureInfo.InvariantCulture);
+                var factor = TryMetadataDouble(value, "tssToTurbidityFactor") ?? 0.3671;
+                var meanTss = TryMetadataDouble(value, "tssMeanMgL");
+                var validCount = TryMetadataInt(value, "validObservationCount");
+                var basis = meanTss.HasValue
+                    ? string.Format(
+                        CultureInfo.InvariantCulture,
+                        "Mean TSS {0:0.###} mg/L × {1:0.####}{2}",
+                        meanTss.Value,
+                        factor,
+                        validCount.HasValue ? $" ({validCount.Value} valid obs.)" : string.Empty)
+                    : "Derived from GOCI-II TSS";
 
                 yield return new DerivedResultRow
                 {
-                    Model = "TSS → Turbidity",
+                    Model = TryMetadataString(value, "model") ?? "TSS → Turbidity",
                     Source = value.SourceId,
-                    Basis = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "Mean TSS {0:0.###} mg/L × {1:0.####} ({2} valid obs.)",
-                        meanTss,
-                        factor,
-                        validCount),
+                    Basis = basis,
                     Classification = "Turbidity",
-                    Seabed = ntu.ToString("0.###", CultureInfo.InvariantCulture),
-                    BurialRate = "NTU"
+                    Seabed = turbidity.ToString("0.###", CultureInfo.InvariantCulture),
+                    BurialRate = value.Unit ?? "NTU"
                 };
                 yield break;
             }
 
-            if (value.Value is SeabedValue seabed && seabed.Derived != null)
+            if (value.Value is SeabedDerivedValue seabed)
             {
-                var derived = seabed.Derived;
                 yield return new DerivedResultRow
                 {
-                    Model = derived.MappingTableId,
+                    Model = seabed.MappingTableId,
                     Source = value.SourceId,
-                    Basis = $"{seabed.Code} | {derived.ShomOriginalClassification} → {derived.PrimaryClassification}",
-                    Classification = derived.PrimaryClassification,
-                    Seabed = derived.SeabedDisplay,
-                    BurialRate = derived.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                    Basis = $"{seabed.ShomOriginalClassification} → {seabed.PrimaryClassification}",
+                    Classification = seabed.PrimaryClassification,
+                    Seabed = seabed.SeabedDisplay,
+                    BurialRate = seabed.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
                 };
                 yield break;
             }
@@ -144,6 +149,29 @@ namespace MarineEnvironment.Viewer
                     BurialRate = estimated.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
                 };
             }
+        }
+
+        private static double? TryMetadataDouble(EnvironmentValue value, string key)
+        {
+            if (value.Metadata == null || !value.Metadata.TryGetValue(key, out var raw) || raw == null)
+                return null;
+            try { return Convert.ToDouble(raw, CultureInfo.InvariantCulture); }
+            catch { return null; }
+        }
+
+        private static int? TryMetadataInt(EnvironmentValue value, string key)
+        {
+            if (value.Metadata == null || !value.Metadata.TryGetValue(key, out var raw) || raw == null)
+                return null;
+            try { return Convert.ToInt32(raw, CultureInfo.InvariantCulture); }
+            catch { return null; }
+        }
+
+        private static string? TryMetadataString(EnvironmentValue value, string key)
+        {
+            if (value.Metadata == null || !value.Metadata.TryGetValue(key, out var raw) || raw == null)
+                return null;
+            return Convert.ToString(raw, CultureInfo.InvariantCulture);
         }
 
         private static string FormatPointValue(object? value)
