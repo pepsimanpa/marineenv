@@ -22,6 +22,8 @@ namespace MarineEnvironment.Models
     public enum DataSourceFormat
     {
         NetCdf,
+        /// <summary>KODC/NIFS 37-slot, 10-day climatology NetCDF for CT/SA.</summary>
+        KodcClimatology,
         Fes2014Current,
         KhoaDailyCurrentCsv,
         ShomSeabed,
