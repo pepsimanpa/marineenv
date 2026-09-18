@@ -198,11 +198,25 @@ namespace MarineEnvironment.Sources.Goci2
 
         private void PrimeGeoIndexFromPersistentCache(string filePath, FileContext context)
         {
+            var sharedKey = BuildSharedNavigationKey(filePath);
+            lock (SharedNavigationSync)
+            {
+                GeoIndex shared;
+                if (SharedGeoIndexes.TryGetValue(sharedKey, out shared))
+                {
+                    lock (_indexSync)
+                    {
+                        _geoIndex = shared;
+                        _geoIndexFile = filePath;
+                    }
+                    return;
+                }
+            }
+
             GeoIndex cached;
             if (!TryLoadPersistentGeoIndex(filePath, context, out cached))
                 return;
 
-            var sharedKey = BuildSharedNavigationKey(filePath);
             lock (SharedNavigationSync)
                 SharedGeoIndexes[sharedKey] = cached;
 
