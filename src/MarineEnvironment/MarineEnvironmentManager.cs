@@ -123,15 +123,22 @@ namespace MarineEnvironment
                 mappingSnapshot = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
             }
 
-            var values = new List<EnvironmentValue>(sourceSnapshot.Length + 1);
+            var sourceValues = new List<EnvironmentValue>(sourceSnapshot.Length);
+            var derivedValues = new List<EnvironmentValue>();
+
             foreach (var source in sourceSnapshot)
             {
                 var value = source.Query(query);
-                if (value != null)
-                    values.Add(ApplySeabedMapping(value, mappingSnapshot));
+                if (value == null)
+                    continue;
+
+                // Preserve the DB/product value exactly as the source reader returned it.
+                sourceValues.Add(value);
+                AppendDirectDerivedValues(value, mappingSnapshot, derivedValues);
             }
 
-            AppendEstimatedSeabedCategorical(values, sourceSnapshot, query);
+            // Cross-source project model: ETOPO terrain + Martin porosity.
+            AppendEstimatedSeabedCategorical(derivedValues, sourceSnapshot, query);
 
             return new EnvironmentQueryResult
             {
@@ -140,11 +147,17 @@ namespace MarineEnvironment
                 RequestedDepth = query.Depth,
                 RequestedDateTime = query.DateTime,
                 Sampling = query.Sampling,
-                Values = values.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
+                SourceValues = sourceValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray(),
+                DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
             };
         }
 
-        public EnvironmentValue? Query(string sourceId, EnvironmentQuery query)
+        /// <summary>
+        /// Queries one configured source and returns its source value together with
+        /// project-derived values that depend directly on that source.
+        /// Cross-source models are produced by Query(EnvironmentQuery).
+        /// </summary>
+        public EnvironmentSourceQueryResult QuerySource(string sourceId, EnvironmentQuery query)
         {
             if (string.IsNullOrWhiteSpace(sourceId))
                 throw new ArgumentException("Source id is required.", nameof(sourceId));
@@ -154,21 +167,146 @@ namespace MarineEnvironment
             ThrowIfDisposed();
 
             var value = GetReadySource(sourceId).Query(query);
-            if (value == null)
-                return null;
+            var derivedValues = new List<EnvironmentValue>();
 
-            SeabedMappingLookup? mapping;
-            lock (_sync)
-                _seabedMappings.TryGetValue(sourceId, out mapping);
-
-            if (mapping == null)
-                return value;
-
-            var one = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase)
+            if (value != null)
             {
-                [sourceId] = mapping
+                Dictionary<string, SeabedMappingLookup> mappings;
+                lock (_sync)
+                    mappings = new Dictionary<string, SeabedMappingLookup>(_seabedMappings, StringComparer.OrdinalIgnoreCase);
+                AppendDirectDerivedValues(value, mappings, derivedValues);
+            }
+
+            return new EnvironmentSourceQueryResult
+            {
+                SourceId = sourceId,
+                SourceValue = value,
+                DerivedValues = derivedValues.OrderBy(x => x.Type).ThenBy(x => x.SourceId).ToArray()
             };
-            return ApplySeabedMapping(value, one);
+        }
+
+        /// <summary>
+        /// Compatibility API returning only the configured source value.
+        /// New integrations should use QuerySource to receive derived values in the same call.
+        /// </summary>
+        public EnvironmentValue? Query(string sourceId, EnvironmentQuery query)
+        {
+            return QuerySource(sourceId, query).SourceValue;
+        }
+
+        private static void AppendDirectDerivedValues(
+            EnvironmentValue sourceValue,
+            IReadOnlyDictionary<string, SeabedMappingLookup> mappings,
+            ICollection<EnvironmentValue> derivedValues)
+        {
+            AppendSeabedMappingDerivedValue(sourceValue, mappings, derivedValues);
+            AppendGoci2TurbidityDerivedValue(sourceValue, derivedValues);
+        }
+
+        private static void AppendSeabedMappingDerivedValue(
+            EnvironmentValue sourceValue,
+            IReadOnlyDictionary<string, SeabedMappingLookup> mappings,
+            ICollection<EnvironmentValue> derivedValues)
+        {
+            if (!(sourceValue.Value is SeabedValue seabed))
+                return;
+            if (!mappings.TryGetValue(sourceValue.SourceId, out var mapping))
+                return;
+            if (!mapping.TryGet(seabed.Code, out var rule))
+                return;
+
+            var derived = new SeabedDerivedValue
+            {
+                MappingTableId = mapping.Table.Id,
+                ShomOriginalClassification = rule.ShomOriginalClassification,
+                PrimaryClassification = rule.PrimaryClassification,
+                Seabed = rule.Seabed,
+                MudPercent = rule.MudPercent,
+                SandPercent = rule.SandPercent,
+                BurialRatePercent = rule.BurialRatePercent
+            };
+
+            var metadata = new Dictionary<string, object?>
+            {
+                ["dataKind"] = "Derived",
+                ["observed"] = false,
+                ["sourceId"] = sourceValue.SourceId,
+                ["sourceType"] = sourceValue.Type.ToString(),
+                ["sourceVariable"] = sourceValue.Variable,
+                ["model"] = derived.MappingTableId,
+                ["shomOriginalClassification"] = derived.ShomOriginalClassification,
+                ["primaryClassification"] = derived.PrimaryClassification,
+                ["mudPercent"] = derived.MudPercent,
+                ["sandPercent"] = derived.SandPercent,
+                ["burialRatePercent"] = derived.BurialRatePercent
+            };
+
+            derivedValues.Add(new EnvironmentValue(
+                sourceValue.SourceId,
+                EnvironmentType.Seabed,
+                derived,
+                null,
+                sourceValue.Latitude,
+                sourceValue.Longitude,
+                sourceValue.Depth,
+                sourceValue.DateTime,
+                "DerivedSeabedMapping",
+                metadata));
+        }
+
+        private static void AppendGoci2TurbidityDerivedValue(
+            EnvironmentValue sourceValue,
+            ICollection<EnvironmentValue> derivedValues)
+        {
+            if (sourceValue.Type != EnvironmentType.Tss || sourceValue.Metadata == null)
+                return;
+            if (!sourceValue.Metadata.TryGetValue("derivedTurbidityNtu", out var rawTurbidity) || rawTurbidity == null)
+                return;
+
+            double turbidity;
+            try
+            {
+                turbidity = Convert.ToDouble(rawTurbidity, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (double.IsNaN(turbidity) || double.IsInfinity(turbidity))
+                return;
+
+            var metadata = new Dictionary<string, object?>
+            {
+                ["dataKind"] = "Derived",
+                ["observed"] = false,
+                ["sourceId"] = sourceValue.SourceId,
+                ["sourceType"] = sourceValue.Type.ToString(),
+                ["sourceVariable"] = sourceValue.Variable,
+                ["model"] = TryMetadataValue(sourceValue.Metadata, "derivedTurbidityModel"),
+                ["formula"] = TryMetadataValue(sourceValue.Metadata, "derivedTurbidityFormula"),
+                ["scope"] = TryMetadataValue(sourceValue.Metadata, "derivedTurbidityScope"),
+                ["tssToTurbidityFactor"] = TryMetadataValue(sourceValue.Metadata, "tssToTurbidityFactor"),
+                ["validObservationCount"] = TryMetadataValue(sourceValue.Metadata, "validObservationCount"),
+                ["tssMeanMgL"] = TryMetadataValue(sourceValue.Metadata, "tssMeanMgL")
+            };
+
+            derivedValues.Add(new EnvironmentValue(
+                sourceValue.SourceId,
+                EnvironmentType.Turbidity,
+                turbidity,
+                "NTU",
+                sourceValue.Latitude,
+                sourceValue.Longitude,
+                sourceValue.Depth,
+                sourceValue.DateTime,
+                "DerivedTurbidity",
+                metadata));
+        }
+
+        private static object? TryMetadataValue(IReadOnlyDictionary<string, object?> metadata, string key)
+        {
+            return metadata.TryGetValue(key, out var value) ? value : null;
         }
 
         public GridResult QueryGrid(string sourceId, GridQuery query)
