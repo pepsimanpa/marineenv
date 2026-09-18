@@ -219,34 +219,86 @@ namespace MarineEnvironment.Sources.Goci2
 
             using var file = Open(filePath);
             using var context = OpenContext(file.Id);
-            var samples = new List<GeoSample>((context.Rows / GeoIndexStride + 1) * (context.Columns / GeoIndexStride + 1));
-            var latRow = new double[context.Columns];
-            var lonRow = new double[context.Columns];
-            for (var row = 0; row < context.Rows; row += GeoIndexStride)
-            {
-                ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
-                ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
-                for (var column = 0; column < context.Columns; column += GeoIndexStride)
-                {
-                    var lat = latRow[column];
-                    var lon = lonRow[column];
-                    if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
-                }
-            }
-            if ((context.Rows - 1) % GeoIndexStride != 0)
-                AppendIndexRow(context, context.Rows - 1, samples, latRow, lonRow);
 
-            var built = new GeoIndex(context.Rows, context.Columns, samples);
+            GeoIndex index;
+            if (!TryLoadPersistentGeoIndex(filePath, context, out index))
+            {
+                index = BuildGeoIndex(context);
+                TrySavePersistentGeoIndex(filePath, context, index);
+            }
+
             lock (SharedNavigationSync)
             {
-                SharedGeoIndexes[sharedKey] = built;
+                SharedGeoIndexes[sharedKey] = index;
             }
             lock (_indexSync)
             {
-                _geoIndex = built;
+                _geoIndex = index;
                 _geoIndexFile = filePath;
             }
-            return built;
+            return index;
+        }
+
+        private static GeoIndex BuildGeoIndex(FileContext context)
+        {
+            var sampledRows = ((context.Rows - 1) / GeoIndexStride) + 1;
+            var sampledColumns = ((context.Columns - 1) / GeoIndexStride) + 1;
+            var samples = new List<GeoSample>(checked(sampledRows * sampledColumns));
+
+            try
+            {
+                var latitudes = ReadStridedBlock(
+                    context.NavigationGroupId,
+                    context.LatitudeVariableId,
+                    sampledRows,
+                    sampledColumns,
+                    GeoIndexStride,
+                    GeoIndexStride);
+                var longitudes = ReadStridedBlock(
+                    context.NavigationGroupId,
+                    context.LongitudeVariableId,
+                    sampledRows,
+                    sampledColumns,
+                    GeoIndexStride,
+                    GeoIndexStride);
+
+                for (var sampledRow = 0; sampledRow < sampledRows; sampledRow++)
+                {
+                    var row = sampledRow * GeoIndexStride;
+                    for (var sampledColumn = 0; sampledColumn < sampledColumns; sampledColumn++)
+                    {
+                        var column = sampledColumn * GeoIndexStride;
+                        var sampleIndex = (sampledRow * sampledColumns) + sampledColumn;
+                        var latitude = latitudes[sampleIndex];
+                        var longitude = longitudes[sampleIndex];
+                        if (IsValidCoordinate(latitude, longitude))
+                            samples.Add(new GeoSample(latitude, longitude, row, column));
+                    }
+                }
+
+                return new GeoIndex(context.Rows, context.Columns, samples, "NetCDF-Strided");
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // Compatibility fallback for an unusually old NetCDF-C deployment.
+                samples.Clear();
+                var latRow = new double[context.Columns];
+                var lonRow = new double[context.Columns];
+                for (var row = 0; row < context.Rows; row += GeoIndexStride)
+                {
+                    ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
+                    ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
+                    for (var column = 0; column < context.Columns; column += GeoIndexStride)
+                    {
+                        var latitude = latRow[column];
+                        var longitude = lonRow[column];
+                        if (IsValidCoordinate(latitude, longitude))
+                            samples.Add(new GeoSample(latitude, longitude, row, column));
+                    }
+                }
+
+                return new GeoIndex(context.Rows, context.Columns, samples, "NetCDF-RowFallback");
+            }
         }
 
         private string BuildSharedNavigationKey(string filePath)
@@ -257,16 +309,200 @@ namespace MarineEnvironment.Sources.Goci2
             return directory + "|" + latitudeName + "|" + longitudeName;
         }
 
-        private static void AppendIndexRow(FileContext context, int row, List<GeoSample> samples, double[] latRow, double[] lonRow)
+        private string GetPersistentGeoIndexPath(string filePath, FileContext context)
         {
-            ReadRow(context.NavigationGroupId, context.LatitudeVariableId, row, latRow);
-            ReadRow(context.NavigationGroupId, context.LongitudeVariableId, row, lonRow);
-            for (var column = 0; column < context.Columns; column += GeoIndexStride)
+            var key = string.Join("|",
+                BuildSharedNavigationKey(filePath),
+                context.Rows.ToString(CultureInfo.InvariantCulture),
+                context.Columns.ToString(CultureInfo.InvariantCulture),
+                GeoIndexStride.ToString(CultureInfo.InvariantCulture));
+
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(key));
+            var name = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant() + ".geoidx";
+            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(root))
+                root = Path.GetTempPath();
+            return Path.Combine(root, "MarineEnvironment", "Cache", "Goci2", name);
+        }
+
+        private bool TryLoadPersistentGeoIndex(string filePath, FileContext context, out GeoIndex index)
+        {
+            index = null!;
+            string cachePath;
+            try
             {
-                var lat = latRow[column];
-                var lon = lonRow[column];
-                if (IsValidCoordinate(lat, lon)) samples.Add(new GeoSample(lat, lon, row, column));
+                cachePath = GetPersistentGeoIndexPath(filePath, context);
+                if (!File.Exists(cachePath))
+                    return false;
+
+                using var stream = new FileStream(cachePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var reader = new BinaryReader(stream, Encoding.UTF8, false);
+
+                if (reader.ReadInt32() != 0x474F4349) // GOCI
+                    return false;
+                if (reader.ReadInt32() != GeoIndexCacheVersion)
+                    return false;
+                if (reader.ReadInt32() != context.Rows || reader.ReadInt32() != context.Columns)
+                    return false;
+                if (reader.ReadInt32() != GeoIndexStride)
+                    return false;
+
+                var sentinelCount = reader.ReadInt32();
+                if (sentinelCount != GeoIndexSentinelCount)
+                    return false;
+
+                for (var i = 0; i < sentinelCount; i++)
+                {
+                    var row = reader.ReadInt32();
+                    var column = reader.ReadInt32();
+                    var cachedLatitude = reader.ReadDouble();
+                    var cachedLongitude = reader.ReadDouble();
+
+                    if (row < 0 || row >= context.Rows || column < 0 || column >= context.Columns)
+                        return false;
+
+                    var currentLatitude = ReadCell(context.NavigationGroupId, context.LatitudeVariableId, row, column);
+                    var currentLongitude = ReadCell(context.NavigationGroupId, context.LongitudeVariableId, row, column);
+                    if (!SameNavigationValue(cachedLatitude, currentLatitude) ||
+                        !SameNavigationValue(cachedLongitude, currentLongitude))
+                        return false;
+                }
+
+                var sampleCount = reader.ReadInt32();
+                var maximumExpected = checked((((context.Rows - 1) / GeoIndexStride) + 1) *
+                                              (((context.Columns - 1) / GeoIndexStride) + 1));
+                if (sampleCount < 1 || sampleCount > maximumExpected)
+                    return false;
+
+                var samples = new List<GeoSample>(sampleCount);
+                for (var i = 0; i < sampleCount; i++)
+                {
+                    var latitude = reader.ReadDouble();
+                    var longitude = reader.ReadDouble();
+                    var row = reader.ReadInt32();
+                    var column = reader.ReadInt32();
+                    if (row < 0 || row >= context.Rows || column < 0 || column >= context.Columns)
+                        return false;
+                    samples.Add(new GeoSample(latitude, longitude, row, column));
+                }
+
+                index = new GeoIndex(context.Rows, context.Columns, samples, "PersistentCache");
+                return true;
             }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void TrySavePersistentGeoIndex(string filePath, FileContext context, GeoIndex index)
+        {
+            if (index.Samples.Count == 0)
+                return;
+
+            try
+            {
+                var cachePath = GetPersistentGeoIndexPath(filePath, context);
+                var directory = Path.GetDirectoryName(cachePath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    Directory.CreateDirectory(directory);
+
+                var tempPath = cachePath + ".tmp";
+                using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var writer = new BinaryWriter(stream, Encoding.UTF8, false))
+                {
+                    writer.Write(0x474F4349); // GOCI
+                    writer.Write(GeoIndexCacheVersion);
+                    writer.Write(context.Rows);
+                    writer.Write(context.Columns);
+                    writer.Write(GeoIndexStride);
+
+                    var sentinels = GetNavigationSentinelPositions(context.Rows, context.Columns);
+                    writer.Write(sentinels.Length);
+                    foreach (var sentinel in sentinels)
+                    {
+                        writer.Write(sentinel.Row);
+                        writer.Write(sentinel.Column);
+                        writer.Write(ReadCell(context.NavigationGroupId, context.LatitudeVariableId, sentinel.Row, sentinel.Column));
+                        writer.Write(ReadCell(context.NavigationGroupId, context.LongitudeVariableId, sentinel.Row, sentinel.Column));
+                    }
+
+                    writer.Write(index.Samples.Count);
+                    foreach (var sample in index.Samples)
+                    {
+                        writer.Write(sample.Latitude);
+                        writer.Write(sample.Longitude);
+                        writer.Write(sample.Row);
+                        writer.Write(sample.Column);
+                    }
+                }
+
+                if (File.Exists(cachePath))
+                    File.Delete(cachePath);
+                File.Move(tempPath, cachePath);
+            }
+            catch
+            {
+                // Cache is an optimization only. Read-only deployments continue without it.
+            }
+        }
+
+        private static NavigationSentinel[] GetNavigationSentinelPositions(int rows, int columns)
+        {
+            return new[]
+            {
+                new NavigationSentinel(0, 0),
+                new NavigationSentinel(0, columns - 1),
+                new NavigationSentinel(rows - 1, 0),
+                new NavigationSentinel(rows - 1, columns - 1),
+                new NavigationSentinel(rows / 2, columns / 2)
+            };
+        }
+
+        private static bool SameNavigationValue(double left, double right)
+        {
+            if (double.IsNaN(left) && double.IsNaN(right))
+                return true;
+            if (double.IsInfinity(left) || double.IsInfinity(right))
+                return left.Equals(right);
+            return NearlyEqual(left, right);
+        }
+
+        private PixelMatch? GetOrFindNearestPixel(
+            string filePath,
+            GeoIndex index,
+            FileContext context,
+            double latitude,
+            double longitude)
+        {
+            var key = string.Join("|",
+                BuildSharedNavigationKey(filePath),
+                latitude.ToString("R", CultureInfo.InvariantCulture),
+                longitude.ToString("R", CultureInfo.InvariantCulture));
+
+            lock (SharedNavigationSync)
+            {
+                PixelMatch? cached;
+                if (SharedPointMatches.TryGetValue(key, out cached))
+                    return cached;
+            }
+
+            var coarse = FindNearest(index.Samples, latitude, longitude);
+            var rowStart = Math.Max(0, coarse.Row - GeoIndexStride);
+            var rowEnd = Math.Min(index.Rows - 1, coarse.Row + GeoIndexStride);
+            var colStart = Math.Max(0, coarse.Column - GeoIndexStride);
+            var colEnd = Math.Min(index.Columns - 1, coarse.Column + GeoIndexStride);
+            var nearest = FindNearestPixel(context, rowStart, rowEnd, colStart, colEnd, latitude, longitude);
+
+            lock (SharedNavigationSync)
+            {
+                if (SharedPointMatches.Count >= MaximumPointMatchCacheEntries)
+                    SharedPointMatches.Clear();
+                SharedPointMatches[key] = nearest;
+            }
+
+            return nearest;
         }
 
         private static GeoSample FindNearest(IReadOnlyList<GeoSample> samples, double latitude, double longitude)
