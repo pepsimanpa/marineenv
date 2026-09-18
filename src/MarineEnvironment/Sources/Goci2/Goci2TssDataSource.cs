@@ -76,6 +76,7 @@ namespace MarineEnvironment.Sources.Goci2
                 using var file = Open(validationFile);
                 using var context = OpenContext(file.Id);
                 ValidateShape(context);
+                PrimeGeoIndexFromPersistentCache(validationFile, context);
                 Status = SourceStatus.Ready;
                 StatusMessage = "GOCI-II LA TSS mosaic (2-D geolocation, 250 m nominal resolution)";
             }
@@ -193,6 +194,23 @@ namespace MarineEnvironment.Sources.Goci2
                 Maximum = maximum,
                 Metadata = metadata
             };
+        }
+
+        private void PrimeGeoIndexFromPersistentCache(string filePath, FileContext context)
+        {
+            GeoIndex cached;
+            if (!TryLoadPersistentGeoIndex(filePath, context, out cached))
+                return;
+
+            var sharedKey = BuildSharedNavigationKey(filePath);
+            lock (SharedNavigationSync)
+                SharedGeoIndexes[sharedKey] = cached;
+
+            lock (_indexSync)
+            {
+                _geoIndex = cached;
+                _geoIndexFile = filePath;
+            }
         }
 
         private GeoIndex GetGeoIndex(string filePath)
