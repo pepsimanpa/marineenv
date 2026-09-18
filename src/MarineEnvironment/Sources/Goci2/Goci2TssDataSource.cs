@@ -38,6 +38,13 @@ namespace MarineEnvironment.Sources.Goci2
             @"^GK2B_GOCI2_L2_(?<date>\d{8})_(?<time>\d{6})_LA_TSS\.nc$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+        private const int ProjectionCandidateCount = 8;
+        private static readonly object SharedNavigationSync = new object();
+        private static readonly Dictionary<string, GeoIndex> SharedGeoIndexes =
+            new Dictionary<string, GeoIndex>(StringComparer.OrdinalIgnoreCase);
+        private static string? _sharedProjectionKey;
+        private static GridProjection? _sharedProjection;
+
         private readonly DataSourceOption _option;
         private readonly string _resolvedPath;
         private readonly object _indexSync = new object();
