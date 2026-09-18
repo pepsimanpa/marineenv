@@ -160,7 +160,7 @@ namespace MarineEnvironment.Sources.Goci2
             var metadata = CreateMetadata(filePath, observationUtc);
             metadata["requestedBounds"] = new[] { query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude };
             metadata["renderGrid"] = new[] { query.Width, query.Height };
-            metadata["resolutionMode"] = query.ResolutionMode.ToString();
+            metadata["resolutionMode"] = "DisplayRaster";
             metadata["sourceNativeRaster"] = false;
             metadata["curvilinearGeolocation"] = true;
             metadata["qualityMask"] = "Cloud_or_Ice | Land | AC_Fail | TSS_Fail";
