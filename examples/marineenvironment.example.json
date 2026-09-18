@@ -83,6 +83,44 @@
       "unit": "PSU"
     },
     {
+      "id": "KODC_CT_9423",
+      "type": "Temperature",
+      "format": "KodcClimatology",
+      "enabled": false,
+      "path": "../Database/KODC/CT_KODC_Climatology_grid_9423.nc",
+      "variable": "CT",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "timeVariable": "time",
+      "unit": "degC",
+      "metadata": {
+        "dataset": "KODC climatological Conservative Temperature",
+        "period": "1994-2023",
+        "temporalResolution": "10-day / 37 climatology slots per year",
+        "note": "Calendar year is ignored at query time; month/day selects a climatology slot."
+      }
+    },
+    {
+      "id": "KODC_SA_9423",
+      "type": "Salinity",
+      "format": "KodcClimatology",
+      "enabled": false,
+      "path": "../Database/KODC/SA_KODC_Climatology_grid_9423.nc",
+      "variable": "SA",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "timeVariable": "time",
+      "unit": "g/kg",
+      "metadata": {
+        "dataset": "KODC climatological Absolute Salinity",
+        "period": "1994-2023",
+        "temporalResolution": "10-day / 37 climatology slots per year",
+        "note": "Calendar year is ignored at query time; month/day selects a climatology slot."
+      }
+    },
+    {
       "id": "FES2014A_CURRENT",
       "type": "Current",
       "format": "Fes2014Current",
