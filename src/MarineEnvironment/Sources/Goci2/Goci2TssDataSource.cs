@@ -97,15 +97,14 @@ namespace MarineEnvironment.Sources.Goci2
             var index = GetGeoIndex(filePath);
             if (index.Samples.Count == 0) return null;
 
-            var coarse = FindNearest(index.Samples, query.Latitude, query.Longitude);
-            var rowStart = Math.Max(0, coarse.Row - GeoIndexStride);
-            var rowEnd = Math.Min(index.Rows - 1, coarse.Row + GeoIndexStride);
-            var colStart = Math.Max(0, coarse.Column - GeoIndexStride);
-            var colEnd = Math.Min(index.Columns - 1, coarse.Column + GeoIndexStride);
-
             using var file = Open(filePath);
             using var context = OpenContext(file.Id);
-            var nearest = FindNearestPixel(context, rowStart, rowEnd, colStart, colEnd, query.Latitude, query.Longitude);
+            var nearest = GetOrFindNearestPixel(
+                filePath,
+                index,
+                context,
+                query.Latitude,
+                query.Longitude);
             if (!nearest.HasValue || nearest.Value.DistanceKm > MaxPointDistanceKm) return null;
 
             var pixel = nearest.Value;
@@ -123,6 +122,7 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["qualityFlag"] = qualityFlag;
             metadata["sourcePixel"] = new[] { pixel.Row, pixel.Column };
             metadata["sourceDistanceKm"] = pixel.DistanceKm;
+            metadata["geoIndexSource"] = index.Source;
 
             return new EnvironmentValue(
                 Id, Type, tss.Value, _option.Unit ?? "g/m^3",
