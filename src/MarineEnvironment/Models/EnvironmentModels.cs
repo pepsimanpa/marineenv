@@ -24,6 +24,8 @@ namespace MarineEnvironment.Models
         NetCdf,
         /// <summary>KODC/NIFS 37-slot, 10-day climatology NetCDF for CT/SA.</summary>
         KodcClimatology,
+        /// <summary>BADA2024 paired LAT/LON/MSL bathymetry point-cloud NetCDF.</summary>
+        BadaBathymetry,
         Fes2014Current,
         KhoaDailyCurrentCsv,
         ShomSeabed,
