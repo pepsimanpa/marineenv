@@ -5,6 +5,7 @@ using System.Linq;
 using MarineEnvironment.Configuration;
 using MarineEnvironment.Models;
 using MarineEnvironment.Sources;
+using MarineEnvironment.Sources.Bada;
 using MarineEnvironment.Sources.Fes2014;
 using MarineEnvironment.Sources.Goci2;
 using MarineEnvironment.Sources.Khoa;
@@ -250,6 +251,12 @@ namespace MarineEnvironment
                 option.Type != EnvironmentType.Temperature &&
                 option.Type != EnvironmentType.Salinity)
                 throw new ArgumentException($"KODC climatology source '{option.Id}' must use type Temperature or Salinity.", nameof(option));
+            if (option.Format == DataSourceFormat.BadaBathymetry &&
+                option.Type != EnvironmentType.Bathymetry)
+                throw new ArgumentException($"BADA bathymetry source '{option.Id}' must use type Bathymetry.", nameof(option));
+            if (option.Format == DataSourceFormat.BadaBathymetry &&
+                string.IsNullOrWhiteSpace(option.Variable))
+                throw new ArgumentException($"BADA bathymetry source '{option.Id}' requires the MSL variable name.", nameof(option));
             if (option.Format == DataSourceFormat.Fes2014Current && option.Type != EnvironmentType.Current)
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.KhoaDailyCurrentCsv && option.Type != EnvironmentType.Current)
@@ -279,6 +286,9 @@ namespace MarineEnvironment
                     break;
                 case DataSourceFormat.KodcClimatology:
                     source = new KodcClimatologyDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.BadaBathymetry:
+                    source = new BadaBathymetryDataSource(option, resolvedPath);
                     break;
                 case DataSourceFormat.Fes2014Current:
                     source = new Fes2014CurrentDataSource(option, resolvedPath);
