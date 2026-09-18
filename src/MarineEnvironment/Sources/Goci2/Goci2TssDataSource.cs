@@ -377,10 +377,10 @@ namespace MarineEnvironment.Sources.Goci2
                 return new GridProjection(index.Rows, index.Columns, query.Width, query.Height, candidateCount, candidates, counts);
 
             using var file = Open(filePath);
-            var optionless = file.Id;
+            var rootId = file.Id;
             // Navigation variable IDs are resolved directly because this projection is shared
             // across all mosaics with the same LA geometry.
-            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(optionless, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
+            NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_ncid(rootId, NavigationGroupName, out var navigationGroupId), "Find GOCI-II navigation_data group");
             var latitudeName = string.IsNullOrWhiteSpace(_option.LatitudeVariable) ? DefaultLatitudeVariable : _option.LatitudeVariable;
             var longitudeName = string.IsNullOrWhiteSpace(_option.LongitudeVariable) ? DefaultLongitudeVariable : _option.LongitudeVariable;
             NetCdfNative.ThrowIfError(NetCdfNative.nc_inq_varid(navigationGroupId, latitudeName, out var latitudeVariableId), $"Find GOCI-II latitude variable '{latitudeName}'");
@@ -685,7 +685,7 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["observationMode"] = "LA";
             metadata["productLayout"] = IsMosaicFile(filePath) ? "Mosaic" : "Slot/other";
             metadata["parameter"] = "Total Suspended Solids concentration";
-            metadata["parameterNote"] = "Raw source TSS concentration; public Goci2Tss format wraps this reader to derive NTU.";
+            metadata["parameterNote"] = "Raw source TSS concentration; the public Goci2Tss source aggregates valid observations and exposes turbidity only as a derived result.";
             metadata["nominalSpatialResolution"] = "250 m";
             metadata["curvilinearGeolocation"] = true;
             metadata["navigationVariables"] = $"/{NavigationGroupName}/{_option.LatitudeVariable}, /{NavigationGroupName}/{_option.LongitudeVariable}";
