@@ -28,8 +28,8 @@ namespace MarineEnvironment.Configuration
 
         /// <summary>
         /// Optional nearest-point cutoff in kilometers for irregular point-cloud sources.
-        /// KHOA tidal-current CSV defaults to 30 km when omitted. Set to 0 or a negative value
-        /// only when unlimited nearest-neighbor lookup is explicitly desired.
+        /// KHOA tidal-current CSV defaults to 30 km and BADA bathymetry defaults to 10 km when omitted.
+        /// Source-specific readers define whether zero/negative values are permitted.
         /// </summary>
         public double? MaxNearestDistanceKm { get; init; }
 
