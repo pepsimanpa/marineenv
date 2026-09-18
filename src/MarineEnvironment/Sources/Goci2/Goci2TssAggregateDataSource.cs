@@ -459,6 +459,8 @@ namespace MarineEnvironment.Sources.Goci2
                 foreach (var reader in _readers.Values)
                     reader.Dispose();
                 _readers.Clear();
+                _lastGridCacheKey = null;
+                _lastGridResult = null;
                 _disposed = true;
             }
         }
