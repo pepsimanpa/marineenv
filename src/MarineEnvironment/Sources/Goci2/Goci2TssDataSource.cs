@@ -175,6 +175,7 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["navigationProjectionCache"] = true;
             metadata["projectionCandidateCount"] = projection.CandidateCount;
             metadata["validRenderedCells"] = validCells;
+            metadata["geoIndexSource"] = index.Source;
 
             return new GridResult
             {
@@ -832,6 +833,24 @@ namespace MarineEnvironment.Sources.Goci2
             return values;
         }
 
+        private static double[] ReadStridedBlock(
+            int groupId,
+            int variableId,
+            int rowCount,
+            int columnCount,
+            int rowStride,
+            int columnStride)
+        {
+            var start = new[] { UIntPtr.Zero, UIntPtr.Zero };
+            var count = new[] { (UIntPtr)(uint)rowCount, (UIntPtr)(uint)columnCount };
+            var stride = new[] { (IntPtr)rowStride, (IntPtr)columnStride };
+            var values = new double[checked(rowCount * columnCount)];
+            NetCdfNative.ThrowIfError(
+                NetCdfNative.nc_get_vars_double(groupId, variableId, start, count, stride, values),
+                "Read strided GOCI-II navigation block");
+            return values;
+        }
+
         private static void ReadRow(int groupId, int variableId, int row, double[] buffer)
         {
             var start = new[] { (UIntPtr)(uint)row, UIntPtr.Zero };
@@ -1027,10 +1046,30 @@ namespace MarineEnvironment.Sources.Goci2
 
         private sealed class GeoIndex
         {
-            public GeoIndex(int rows, int columns, List<GeoSample> samples) { Rows = rows; Columns = columns; Samples = samples; }
+            public GeoIndex(int rows, int columns, List<GeoSample> samples, string source)
+            {
+                Rows = rows;
+                Columns = columns;
+                Samples = samples;
+                Source = source;
+            }
+
             public int Rows { get; }
             public int Columns { get; }
             public List<GeoSample> Samples { get; }
+            public string Source { get; }
+        }
+
+        private readonly struct NavigationSentinel
+        {
+            public NavigationSentinel(int row, int column)
+            {
+                Row = row;
+                Column = column;
+            }
+
+            public int Row { get; }
+            public int Column { get; }
         }
 
         private readonly struct GeoSample
