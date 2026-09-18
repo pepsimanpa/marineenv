@@ -87,9 +87,37 @@ namespace MarineEnvironment.Models
         public double? RequestedDepth { get; init; }
         public DateTime? RequestedDateTime { get; init; }
         public SpatialSampling Sampling { get; init; } = SpatialSampling.Nearest;
-        public IReadOnlyList<EnvironmentValue> Values { get; init; } = Array.Empty<EnvironmentValue>();
 
-        public int Count => Values.Count;
+        /// <summary>Values read from configured source databases/products.</summary>
+        public IReadOnlyList<EnvironmentValue> SourceValues { get; init; } = Array.Empty<EnvironmentValue>();
+
+        /// <summary>
+        /// Values calculated by MarineEnvironment from one or more source values.
+        /// Derived values are returned during the same Query call; callers do not need
+        /// to inspect source-specific metadata or recalculate project models.
+        /// </summary>
+        public IReadOnlyList<EnvironmentValue> DerivedValues { get; init; } = Array.Empty<EnvironmentValue>();
+
+        /// <summary>
+        /// Compatibility view containing SourceValues followed by DerivedValues.
+        /// Prefer SourceValues and DerivedValues in new integrations.
+        /// </summary>
+        public IReadOnlyList<EnvironmentValue> Values => SourceValues.Concat(DerivedValues).ToArray();
+
+        public int SourceCount => SourceValues.Count;
+        public int DerivedCount => DerivedValues.Count;
+        public int Count => SourceCount + DerivedCount;
+    }
+
+    /// <summary>
+    /// Result for one named source. SourceValue preserves the DB/product value and
+    /// DerivedValues contains project-calculated values directly attributable to it.
+    /// </summary>
+    public sealed class EnvironmentSourceQueryResult
+    {
+        public string SourceId { get; init; } = string.Empty;
+        public EnvironmentValue? SourceValue { get; init; }
+        public IReadOnlyList<EnvironmentValue> DerivedValues { get; init; } = Array.Empty<EnvironmentValue>();
     }
 
     public sealed class GridQuery
