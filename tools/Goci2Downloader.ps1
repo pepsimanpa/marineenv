@@ -160,7 +160,16 @@ function Download-ToFile {
 
     if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
         & curl.exe -L --fail --retry 3 --retry-delay 3 --connect-timeout 30 --output $part $Url
-        if ($LASTEXITCODE -ne 0) { throw "curl.exe exit code $LASTEXITCODE" }
+        $curlExit = $LASTEXITCODE
+
+        if ($curlExit -eq 35) {
+            Write-Host "TLS certificate revocation check was unavailable. Retrying with --ssl-no-revoke."
+            Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+            & curl.exe -L --fail --retry 3 --retry-delay 3 --connect-timeout 30 --ssl-no-revoke --output $part $Url
+            $curlExit = $LASTEXITCODE
+        }
+
+        if ($curlExit -ne 0) { throw "curl.exe exit code $curlExit" }
     }
     else {
         Invoke-WebRequest -Uri $Url -OutFile $part -UseBasicParsing
