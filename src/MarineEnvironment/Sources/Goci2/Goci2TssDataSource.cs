@@ -138,60 +138,20 @@ namespace MarineEnvironment.Sources.Goci2
             var index = GetGeoIndex(filePath);
             var latitudes = BuildDescendingAxis(query.MaxLatitude, query.MinLatitude, query.Height);
             var longitudes = BuildAscendingAxis(query.MinLongitude, query.MaxLongitude, query.Width);
-            var values = new double?[query.Width * query.Height];
-            var bestDistance2 = Enumerable.Repeat(double.PositiveInfinity, values.Length).ToArray();
+            var projection = GetOrBuildGridProjection(filePath, index, query, latitudes, longitudes);
 
-            SourceWindow window;
-            if (TryGetSourceWindow(index, query, out window))
-            {
-                using var file = Open(filePath);
-                using var context = OpenContext(file.Id);
+            using var file = Open(filePath);
+            using var context = OpenContext(file.Id);
+            if (context.Rows != projection.SourceRows || context.Columns != projection.SourceColumns)
+                throw new InvalidDataException("GOCI-II mosaic navigation geometry changed between files; reload the source before rendering.");
 
-                for (var row = window.RowStart; row <= window.RowEnd; row += GridBlockRows)
-                {
-                    var rowCount = Math.Min(GridBlockRows, window.RowEnd - row + 1);
-                    var colCount = window.ColumnEnd - window.ColumnStart + 1;
-                    var lats = ReadBlock(context.NavigationGroupId, context.LatitudeVariableId, row, rowCount, window.ColumnStart, colCount);
-                    var lons = ReadBlock(context.NavigationGroupId, context.LongitudeVariableId, row, rowCount, window.ColumnStart, colCount);
-                    var tss = ReadBlock(context.GeophysicalGroupId, context.TssVariableId, row, rowCount, window.ColumnStart, colCount);
-                    var flags = context.FlagVariableId.HasValue
-                        ? ReadBlock(context.GeophysicalGroupId, context.FlagVariableId.Value, row, rowCount, window.ColumnStart, colCount)
-                        : null;
-
-                    for (var localRow = 0; localRow < rowCount; localRow++)
-                    {
-                        for (var localCol = 0; localCol < colCount; localCol++)
-                        {
-                            var sourceIndex = (localRow * colCount) + localCol;
-                            var lat = lats[sourceIndex];
-                            var lon = lons[sourceIndex];
-                            if (!IsValidCoordinate(lat, lon)) continue;
-                            if (lat < query.MinLatitude || lat > query.MaxLatitude || lon < query.MinLongitude || lon > query.MaxLongitude) continue;
-
-                            var value = TransformTss(context, tss[sourceIndex]);
-                            if (!value.HasValue) continue;
-                            if (flags != null)
-                            {
-                                var flag = (int)Math.Round(flags[sourceIndex]);
-                                if ((flag & InvalidQualityMask) != 0) continue;
-                            }
-
-                            var outputRow = NearestOutputIndexDescending(latitudes, lat);
-                            var outputColumn = NearestOutputIndexAscending(longitudes, lon);
-                            var outputIndex = (outputRow * query.Width) + outputColumn;
-                            var distance2 = GeographicDistanceSquaredKm(lat, lon, latitudes[outputRow], longitudes[outputColumn]);
-                            if (distance2 >= bestDistance2[outputIndex]) continue;
-                            bestDistance2[outputIndex] = distance2;
-                            values[outputIndex] = value.Value;
-                        }
-                    }
-                }
-            }
-
+            var values = ReadProjectedTss(context, projection);
             double? minimum = null, maximum = null;
+            var validCells = 0;
             foreach (var value in values)
             {
                 if (!value.HasValue) continue;
+                validCells++;
                 minimum = !minimum.HasValue ? value : Math.Min(minimum.Value, value.Value);
                 maximum = !maximum.HasValue ? value : Math.Max(maximum.Value, value.Value);
             }
@@ -204,13 +164,24 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["sourceNativeRaster"] = false;
             metadata["curvilinearGeolocation"] = true;
             metadata["qualityMask"] = "Cloud_or_Ice | Land | AC_Fail | TSS_Fail";
+            metadata["navigationProjectionCache"] = true;
+            metadata["projectionCandidateCount"] = ProjectionCandidateCount;
+            metadata["validRenderedCells"] = validCells;
 
             return new GridResult
             {
-                SourceId = Id, Type = Type, Width = query.Width, Height = query.Height,
-                Latitudes = latitudes, Longitudes = longitudes, Values = values,
-                Unit = _option.Unit ?? "g/m^3", DateTime = observationUtc,
-                Variable = GetTssVariableName(), Minimum = minimum, Maximum = maximum,
+                SourceId = Id,
+                Type = Type,
+                Width = query.Width,
+                Height = query.Height,
+                Latitudes = latitudes,
+                Longitudes = longitudes,
+                Values = values,
+                Unit = _option.Unit ?? "g/m^3",
+                DateTime = observationUtc,
+                Variable = GetTssVariableName(),
+                Minimum = minimum,
+                Maximum = maximum,
                 Metadata = metadata
             };
         }
