@@ -163,6 +163,13 @@ namespace MarineEnvironment.Sources.Goci2
                 throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
 
             var selectedFiles = SelectFiles(query.DateTime);
+            var cacheKey = BuildGridCacheKey(query, selectedFiles);
+            lock (_readerSync)
+            {
+                if (_lastGridResult != null && string.Equals(_lastGridCacheKey, cacheKey, StringComparison.Ordinal))
+                    return _lastGridResult;
+            }
+
             var sourceGrids = new List<GridResult>(selectedFiles.Length);
             var usedFiles = new List<MosaicFile>(selectedFiles.Length);
 
@@ -204,44 +211,65 @@ namespace MarineEnvironment.Sources.Goci2
                         continue;
 
                     var meanTss = sum / count;
-                    var turbidity = meanTss * TssToTurbidityFactor;
-                    values[i] = turbidity;
+                    values[i] = meanTss;
                     cellsWithValue++;
-                    minimum = !minimum.HasValue ? turbidity : Math.Min(minimum.Value, turbidity);
-                    maximum = !maximum.HasValue ? turbidity : Math.Max(maximum.Value, turbidity);
+                    minimum = !minimum.HasValue ? meanTss : Math.Min(minimum.Value, meanTss);
+                    maximum = !maximum.HasValue ? meanTss : Math.Max(maximum.Value, meanTss);
                 }
 
-                // Each raw reader reprojects to the same requested geographic display grid.
+                // Every selected mosaic is reprojected to the same requested display grid.
                 latitudes = sourceGrids[0].Latitudes;
                 longitudes = sourceGrids[0].Longitudes;
             }
 
-            var metadata = CreateDerivedMetadata(selectedFiles, usedFiles.ToArray());
+            var metadata = CreateAggregateMetadata(selectedFiles, usedFiles.ToArray());
             metadata["requestedBounds"] = new[]
             {
                 query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude
             };
             metadata["renderGrid"] = new[] { query.Width, query.Height };
-            metadata["cellsWithDerivedValue"] = cellsWithValue;
+            metadata["cellsWithSourceValue"] = cellsWithValue;
             metadata["sourceNativeRaster"] = false;
             metadata["curvilinearGeolocation"] = true;
+            metadata["renderCache"] = "LastQuery";
 
-            return new GridResult
+            var result = new GridResult
             {
                 SourceId = Id,
-                Type = EnvironmentType.Turbidity,
+                Type = EnvironmentType.Tss,
                 Width = query.Width,
                 Height = query.Height,
                 Latitudes = latitudes,
                 Longitudes = longitudes,
                 Values = values,
-                Unit = "NTU",
+                Unit = "g/m^3",
                 DateTime = null,
-                Variable = DerivedVariableName,
+                Variable = AggregateVariableName,
                 Minimum = minimum,
                 Maximum = maximum,
                 Metadata = metadata
             };
+
+            lock (_readerSync)
+            {
+                _lastGridCacheKey = cacheKey;
+                _lastGridResult = result;
+            }
+
+            return result;
+        }
+
+        private string BuildGridCacheKey(GridQuery query, IReadOnlyList<MosaicFile> selectedFiles)
+        {
+            return string.Join("|",
+                query.MinLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MinLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.Width.ToString(CultureInfo.InvariantCulture),
+                query.Height.ToString(CultureInfo.InvariantCulture),
+                query.ResolutionMode.ToString(),
+                string.Join(";", selectedFiles.Select(x => x.Path)));
         }
 
         private Dictionary<string, object?> CreateAggregateMetadata(
