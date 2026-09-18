@@ -79,6 +79,37 @@ namespace MarineEnvironment.Viewer
 
         private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)
         {
+            if (value.Type == EnvironmentType.Tss
+                && value.Metadata != null
+                && value.Metadata.TryGetValue("derivedTurbidityNtu", out var derivedTurbidity)
+                && derivedTurbidity != null)
+            {
+                var ntu = Convert.ToDouble(derivedTurbidity, CultureInfo.InvariantCulture);
+                var factor = value.Metadata.TryGetValue("tssToTurbidityFactor", out var factorValue) && factorValue != null
+                    ? Convert.ToDouble(factorValue, CultureInfo.InvariantCulture)
+                    : 0.3671;
+                var validCount = value.Metadata.TryGetValue("validObservationCount", out var countValue) && countValue != null
+                    ? Convert.ToInt32(countValue, CultureInfo.InvariantCulture)
+                    : 0;
+                var meanTss = Convert.ToDouble(value.Value, CultureInfo.InvariantCulture);
+
+                yield return new DerivedResultRow
+                {
+                    Model = "TSS → Turbidity",
+                    Source = value.SourceId,
+                    Basis = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "Mean TSS {0:0.###} mg/L × {1:0.####} ({2} valid obs.)",
+                        meanTss,
+                        factor,
+                        validCount),
+                    Classification = "Turbidity",
+                    Seabed = ntu.ToString("0.###", CultureInfo.InvariantCulture),
+                    BurialRate = "NTU"
+                };
+                yield break;
+            }
+
             if (value.Value is SeabedValue seabed && seabed.Derived != null)
             {
                 var derived = seabed.Derived;
@@ -148,6 +179,14 @@ namespace MarineEnvironment.Viewer
             }
             if (value.Value is EstimatedSeabedValue)
                 return "DerivedEstimate";
+
+            if (value.Type == EnvironmentType.Tss
+                && value.Metadata != null
+                && value.Metadata.TryGetValue("validObservationCount", out var validCount)
+                && validCount != null)
+            {
+                return $"Mean TSS ({Convert.ToInt32(validCount, CultureInfo.InvariantCulture)} obs.)";
+            }
 
             return string.Empty;
         }

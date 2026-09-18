@@ -10,25 +10,24 @@ using MarineEnvironment.Models;
 namespace MarineEnvironment.Sources.Goci2
 {
     /// <summary>
-    /// Offline GOCI-II turbidity source.
+    /// Offline GOCI-II TSS aggregate source.
     ///
     /// Downloaded GOCI-II L2 LA mosaic TSS files are kept as source data; no averaged
-    /// database is generated. At query time this source reads up to five mosaics, lets
-    /// Goci2TssDataSource remove invalid-quality pixels, calculates the arithmetic mean
-    /// of the remaining TSS values, and derives turbidity using the project-selected
-    /// KIOST/Gomso relation:
+    /// database is generated. At query time this source reads up to five mosaics,
+    /// excludes invalid-quality pixels and returns the arithmetic mean TSS as the
+    /// source value. Turbidity is kept as a derived result in metadata using:
     ///
     ///     Turbidity [NTU] = 0.3671 * TSS [mg/L]
     ///
-    /// GOCI-II TSS uses g/m^3 and 1 g/m^3 = 1 mg/L, so its numeric value can be used
-    /// directly in the equation. The NTU result is derived, not satellite-observed NTU.
+    /// GOCI-II TSS uses g/m^3 and 1 g/m^3 = 1 mg/L, so the numeric value can be used
+    /// directly in the derived equation.
     /// </summary>
-    internal sealed class Goci2TurbidityDataSource : IEnvironmentDataSource
+    internal sealed class Goci2TssAggregateDataSource : IEnvironmentDataSource
     {
         private const int MaximumAggregationFiles = 5;
         private const int MinimumValidObservations = 1;
         private const double TssToTurbidityFactor = 0.3671;
-        private const string DerivedVariableName = "DerivedTurbidity";
+        private const string AggregateVariableName = "TSS_Mean";
 
         private static readonly Regex MosaicFileRegex = new Regex(
             @"^GK2B_GOCI2_L2_(?<date>\d{8})_(?<time>\d{6})_LA_TSS\.nc$",
@@ -40,9 +39,11 @@ namespace MarineEnvironment.Sources.Goci2
         private readonly Dictionary<string, Goci2TssDataSource> _readers =
             new Dictionary<string, Goci2TssDataSource>(StringComparer.OrdinalIgnoreCase);
         private readonly object _readerSync = new object();
+        private string? _lastGridCacheKey;
+        private GridResult? _lastGridResult;
         private bool _disposed;
 
-        public Goci2TurbidityDataSource(DataSourceOption option, string resolvedPath)
+        public Goci2TssAggregateDataSource(DataSourceOption option, string resolvedPath)
         {
             _option = option ?? throw new ArgumentNullException(nameof(option));
             _resolvedPath = resolvedPath ?? throw new ArgumentNullException(nameof(resolvedPath));
@@ -78,8 +79,8 @@ namespace MarineEnvironment.Sources.Goci2
 
                 Status = SourceStatus.Ready;
                 StatusMessage =
-                    $"GOCI-II LA TSS mosaics: {_availableFiles.Length} file(s); query-time mean of up to {MaximumAggregationFiles}, " +
-                    $"derived turbidity = {TssToTurbidityFactor.ToString(CultureInfo.InvariantCulture)} x TSS (NTU).";
+                    $"GOCI-II LA TSS mosaics: {_availableFiles.Length} file(s); source value is query-time mean TSS of up to {MaximumAggregationFiles}; " +
+                    $"turbidity is derived separately as {TssToTurbidityFactor.ToString(CultureInfo.InvariantCulture)} x TSS.";
             }
             catch (DllNotFoundException ex)
             {
@@ -96,7 +97,7 @@ namespace MarineEnvironment.Sources.Goci2
         }
 
         public string Id => _option.Id;
-        public EnvironmentType Type => EnvironmentType.Turbidity;
+        public EnvironmentType Type => EnvironmentType.Tss;
         public SourceStatus Status { get; private set; } = SourceStatus.NotInitialized;
         public string? StatusMessage { get; private set; }
 
@@ -130,23 +131,24 @@ namespace MarineEnvironment.Sources.Goci2
                 return null;
 
             var meanTss = samples.Average(x => x.TssGm3);
-            var turbidity = meanTss * TssToTurbidityFactor;
-            var metadata = CreateDerivedMetadata(selectedFiles, samples.Select(x => x.File).ToArray());
+            var derivedTurbidity = meanTss * TssToTurbidityFactor;
+            var metadata = CreateAggregateMetadata(selectedFiles, samples.Select(x => x.File).ToArray());
             metadata["tssSamplesGm3"] = samples.Select(x => x.TssGm3).ToArray();
             metadata["tssMeanGm3"] = meanTss;
             metadata["tssMeanMgL"] = meanTss;
             metadata["validObservationCount"] = samples.Count;
+            metadata["derivedTurbidityNtu"] = derivedTurbidity;
 
             return new EnvironmentValue(
                 Id,
-                EnvironmentType.Turbidity,
-                turbidity,
-                "NTU",
+                EnvironmentType.Tss,
+                meanTss,
+                "g/m^3",
                 query.Latitude,
                 query.Longitude,
                 null,
                 null,
-                DerivedVariableName,
+                AggregateVariableName,
                 metadata);
         }
 
@@ -161,6 +163,13 @@ namespace MarineEnvironment.Sources.Goci2
                 throw new ArgumentOutOfRangeException(nameof(query.Height), "Grid height must be between 2 and 2048.");
 
             var selectedFiles = SelectFiles(query.DateTime);
+            var cacheKey = BuildGridCacheKey(query, selectedFiles);
+            lock (_readerSync)
+            {
+                if (_lastGridResult != null && string.Equals(_lastGridCacheKey, cacheKey, StringComparison.Ordinal))
+                    return _lastGridResult;
+            }
+
             var sourceGrids = new List<GridResult>(selectedFiles.Length);
             var usedFiles = new List<MosaicFile>(selectedFiles.Length);
 
@@ -202,47 +211,69 @@ namespace MarineEnvironment.Sources.Goci2
                         continue;
 
                     var meanTss = sum / count;
-                    var turbidity = meanTss * TssToTurbidityFactor;
-                    values[i] = turbidity;
+                    values[i] = meanTss;
                     cellsWithValue++;
-                    minimum = !minimum.HasValue ? turbidity : Math.Min(minimum.Value, turbidity);
-                    maximum = !maximum.HasValue ? turbidity : Math.Max(maximum.Value, turbidity);
+                    minimum = !minimum.HasValue ? meanTss : Math.Min(minimum.Value, meanTss);
+                    maximum = !maximum.HasValue ? meanTss : Math.Max(maximum.Value, meanTss);
                 }
 
-                // Each raw reader reprojects to the same requested geographic display grid.
+                // Every selected mosaic is reprojected to the same requested display grid.
                 latitudes = sourceGrids[0].Latitudes;
                 longitudes = sourceGrids[0].Longitudes;
             }
 
-            var metadata = CreateDerivedMetadata(selectedFiles, usedFiles.ToArray());
+            var metadata = CreateAggregateMetadata(selectedFiles, usedFiles.ToArray());
             metadata["requestedBounds"] = new[]
             {
                 query.MinLatitude, query.MaxLatitude, query.MinLongitude, query.MaxLongitude
             };
             metadata["renderGrid"] = new[] { query.Width, query.Height };
-            metadata["cellsWithDerivedValue"] = cellsWithValue;
+            metadata["cellsWithSourceValue"] = cellsWithValue;
             metadata["sourceNativeRaster"] = false;
             metadata["curvilinearGeolocation"] = true;
+            metadata["resolutionMode"] = "DisplayRaster";
+            metadata["renderCache"] = "LastQuery";
 
-            return new GridResult
+            var result = new GridResult
             {
                 SourceId = Id,
-                Type = EnvironmentType.Turbidity,
+                Type = EnvironmentType.Tss,
                 Width = query.Width,
                 Height = query.Height,
                 Latitudes = latitudes,
                 Longitudes = longitudes,
                 Values = values,
-                Unit = "NTU",
+                Unit = "g/m^3",
                 DateTime = null,
-                Variable = DerivedVariableName,
+                Variable = AggregateVariableName,
                 Minimum = minimum,
                 Maximum = maximum,
                 Metadata = metadata
             };
+
+            lock (_readerSync)
+            {
+                _lastGridCacheKey = cacheKey;
+                _lastGridResult = result;
+            }
+
+            return result;
         }
 
-        private Dictionary<string, object?> CreateDerivedMetadata(
+        private string BuildGridCacheKey(GridQuery query, IReadOnlyList<MosaicFile> selectedFiles)
+        {
+            return string.Join("|",
+                query.MinLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLatitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MinLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.MaxLongitude.ToString("R", CultureInfo.InvariantCulture),
+                query.Width.ToString(CultureInfo.InvariantCulture),
+                query.Height.ToString(CultureInfo.InvariantCulture),
+                query.ResolutionMode.ToString(),
+                string.Join(";", selectedFiles.Select(x => x.Path)));
+        }
+
+        private Dictionary<string, object?> CreateAggregateMetadata(
             IReadOnlyList<MosaicFile> selectedFiles,
             IReadOnlyList<MosaicFile> usedFiles)
         {
@@ -250,17 +281,16 @@ namespace MarineEnvironment.Sources.Goci2
                 ? _option.Metadata.ToDictionary(x => x.Key, x => (object?)x.Value)
                 : new Dictionary<string, object?>();
 
-            metadata["derived"] = true;
+            metadata["aggregatedSource"] = true;
             metadata["sensor"] = "GOCI-II";
             metadata["processingLevel"] = "L2";
             metadata["observationMode"] = "LA Mosaic";
-            metadata["sourceParameter"] = "Total Suspended Solids concentration";
-            metadata["sourceUnit"] = "g/m^3 (= mg/L)";
-            metadata["outputParameter"] = "Turbidity";
-            metadata["outputUnit"] = "NTU";
+            metadata["parameter"] = "Total Suspended Solids concentration";
+            metadata["unit"] = "g/m^3 (= mg/L)";
+            metadata["derivedTurbidityAvailable"] = true;
             metadata["aggregation"] = "ArithmeticMean";
             metadata["aggregationAtQueryTime"] = true;
-            metadata["aggregationNote"] = "Adapted for the offline project: valid TSS observations are averaged at query time; no averaged DB is stored.";
+            metadata["aggregationNote"] = "Valid source TSS observations are averaged at query time; no averaged DB is stored.";
             metadata["maximumAggregationFiles"] = MaximumAggregationFiles;
             metadata["minimumValidObservations"] = MinimumValidObservations;
             metadata["selectedFileCount"] = selectedFiles.Count;
@@ -270,9 +300,9 @@ namespace MarineEnvironment.Sources.Goci2
             metadata["selectedObservationUtc"] = selectedFiles.Select(x => x.ObservationUtc.ToString("O", CultureInfo.InvariantCulture)).ToArray();
             metadata["usedObservationUtc"] = usedFiles.Select(x => x.ObservationUtc.ToString("O", CultureInfo.InvariantCulture)).ToArray();
             metadata["tssToTurbidityFactor"] = TssToTurbidityFactor;
-            metadata["conversionFormula"] = "Turbidity_NTU = 0.3671 * TSS_mg/L";
-            metadata["conversionModel"] = "KIOST_GOMSO_TSS_TURBIDITY_LINEAR";
-            metadata["conversionScope"] = "Project-derived use of a site-specific Gomso Bay empirical TSS-turbidity relation";
+            metadata["derivedTurbidityFormula"] = "Turbidity_NTU = 0.3671 * TSS_mg/L";
+            metadata["derivedTurbidityModel"] = "KIOST_GOMSO_TSS_TURBIDITY_LINEAR";
+            metadata["derivedTurbidityScope"] = "Project-derived use of a site-specific Gomso Bay empirical TSS-turbidity relation";
             metadata["qualityFiltering"] = "Cloud_or_Ice | Land | AC_Fail | TSS_Fail excluded before aggregation";
             metadata["nominalSpatialResolution"] = "250 m";
 
@@ -318,7 +348,7 @@ namespace MarineEnvironment.Sources.Goci2
                 var rawOption = new DataSourceOption
                 {
                     Id = _option.Id + "__RAW_TSS",
-                    Type = EnvironmentType.Turbidity,
+                    Type = EnvironmentType.Tss,
                     Format = DataSourceFormat.Goci2Tss,
                     Enabled = true,
                     Path = file.Path,
@@ -413,7 +443,7 @@ namespace MarineEnvironment.Sources.Goci2
         private void ThrowIfDisposed()
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(Goci2TurbidityDataSource));
+                throw new ObjectDisposedException(nameof(Goci2TssAggregateDataSource));
         }
 
         public void Dispose()
@@ -429,6 +459,8 @@ namespace MarineEnvironment.Sources.Goci2
                 foreach (var reader in _readers.Values)
                     reader.Dispose();
                 _readers.Clear();
+                _lastGridCacheKey = null;
+                _lastGridResult = null;
                 _disposed = true;
             }
         }

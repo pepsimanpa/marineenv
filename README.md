@@ -22,7 +22,7 @@ The library supports generic NetCDF sources plus verified special-source readers
 - FES2014a tidal-current harmonic synthesis
 - SHOM categorical seabed sediment polygons and optional user-defined operational mapping
 - Martin et al. (2015) global seafloor sediment porosity grid
-- GOCI-II Level-2 Local Area mosaic TSS input with query-time derived turbidity
+- GOCI-II Level-2 Local Area mosaic TSS source values with separate derived turbidity
 
 Current source targets include:
 
@@ -30,39 +30,42 @@ Current source targets include:
 - WOA23 temperature and salinity
 - GDEM-V temperature and salinity
 - FES2014a tidal currents
-- GOCI-II TSS-derived turbidity
+- GOCI-II TSS
 - Martin et al. (2015) global seafloor sediment porosity
 - SHOM worldwide seabed sediment map
 
-## GOCI-II TSS-derived turbidity
+## GOCI-II TSS and derived turbidity
 
 The GOCI-II source is designed for an offline workflow. Original `..._LA_TSS.nc` mosaic files remain on disk; the library does **not** generate a separate averaged database.
 
-At query time it:
+At query time the source:
 
 1. selects up to five LA mosaic files,
-2. reads the TSS value for the requested point/cell from each file,
-3. excludes pixels flagged as Cloud/Ice, Land, AC_Fail, or TSS_Fail,
-4. calculates the arithmetic mean of the remaining TSS observations,
-5. derives turbidity with the project-selected relation `Turbidity_NTU = 0.3671 * TSS_mg/L`.
+2. reads valid TSS observations while excluding Cloud/Ice, Land, AC_Fail and TSS_Fail pixels,
+3. returns the arithmetic mean TSS as the source result (`EnvironmentType.Tss`, `g/m^3`),
+4. records the project-derived turbidity separately in metadata using `Turbidity_NTU = 0.3671 * TSS_mg/L`.
 
-GOCI-II TSS is `g/m^3`, which is numerically equal to `mg/L`. The resulting NTU is therefore a **derived project value**, not a direct GOCI-II turbidity observation. Metadata records the selected/used files, TSS samples, mean TSS, quality filtering, conversion factor, and the site-specific scope of the selected relation.
+Because `1 g/m^3 = 1 mg/L`, the TSS numeric value can be used directly in the conversion equation. The NTU value is a **derived project result**, not a direct GOCI-II observation. The validation viewer therefore shows TSS in the normal source-results table and shows the converted turbidity in the derived-results panel.
+
+Grid rendering reuses a navigation/geolocation projection across the selected mosaics and caches the most recent aggregate grid, avoiding repeated full latitude/longitude processing when the same view is rendered again.
 
 Example configuration:
 
 ```json
 {
-  "id": "GOCI2_TURBIDITY",
-  "type": "Turbidity",
+  "id": "GOCI2_TSS",
+  "type": "Tss",
   "format": "Goci2Tss",
   "enabled": true,
   "path": "../Database/GOCI2/TSS",
   "variable": "TSS",
   "latitudeVariable": "latitude",
   "longitudeVariable": "longitude",
-  "unit": "NTU"
+  "unit": "g/m^3"
 }
 ```
+
+Legacy configurations that still specify `"type": "Turbidity"` for `Goci2Tss` are accepted for compatibility, but the registered source is exposed as `Tss`.
 
 If more than five mosaics are present, the five observations nearest to the requested time are used; without a requested time, the latest five are used.
 

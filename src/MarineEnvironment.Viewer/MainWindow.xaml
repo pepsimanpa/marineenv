@@ -87,15 +87,15 @@
                             <Border x:Name="DerivedResultsPanel" Grid.Row="2" Margin="0,8,0,0" Padding="6" BorderBrush="#B8C7D9" BorderThickness="1" CornerRadius="4" Background="#F8FAFC" Visibility="Collapsed">
                                 <Grid>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="135"/></Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="Derived / estimated seabed results" FontWeight="SemiBold" Margin="4,1,4,5"/>
+                                    <TextBlock Grid.Row="0" Text="Derived / estimated results" FontWeight="SemiBold" Margin="4,1,4,5"/>
                                     <DataGrid x:Name="DerivedResultsGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Model / Mapping" Binding="{Binding Model}" Width="150"/>
                                             <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="175"/>
                                             <DataGridTextColumn Header="Basis" Binding="{Binding Basis}" Width="235"/>
-                                            <DataGridTextColumn Header="분류" Binding="{Binding Classification}" Width="120"/>
-                                            <DataGridTextColumn Header="해저저질" Binding="{Binding Seabed}" Width="*"/>
-                                            <DataGridTextColumn Header="매몰률" Binding="{Binding BurialRate}" Width="70"/>
+                                            <DataGridTextColumn Header="Result Type" Binding="{Binding Classification}" Width="120"/>
+                                            <DataGridTextColumn Header="Result" Binding="{Binding Seabed}" Width="*"/>
+                                            <DataGridTextColumn Header="Unit / Aux." Binding="{Binding BurialRate}" Width="90"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </Grid>

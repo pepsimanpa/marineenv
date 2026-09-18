@@ -10,6 +10,7 @@ namespace MarineEnvironment.Models
         Temperature,
         Salinity,
         Current,
+        Tss,
         Turbidity,
         Porosity,
         Seabed,
@@ -30,8 +31,8 @@ namespace MarineEnvironment.Models
         KhoaDailyCurrentCsv,
         ShomSeabed,
         /// <summary>
-        /// GOCI-II L2 LA TSS mosaic input. In this project it is exposed as derived
-        /// turbidity after query-time multi-file TSS averaging.
+        /// GOCI-II L2 LA TSS mosaic input. Multiple observations are aggregated as a
+        /// representative TSS source value; turbidity is exposed separately as a derived result.
         /// </summary>
         Goci2Tss
     }
