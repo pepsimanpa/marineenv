@@ -203,6 +203,17 @@
       }
     },
     {
+      "id": "KOREA_SEDIMENT",
+      "type": "Seabed",
+      "format": "KoreaSediment",
+      "enabled": false,
+      "path": "../Database/KOREA_SEDIMENT/korea_sediment_deposits_type.shp",
+      "metadata": {
+        "dataset": "Korea sediment deposits type",
+        "note": "Independent domestic deposit codes (case-sensitive); project-derived sediment category and burial rate returned separately. Keep SHP/SHX/DBF/PRJ together."
+      }
+    },
+    {
       "id": "SHOM_SEABED",
       "type": "Seabed",
       "format": "ShomSeabed",

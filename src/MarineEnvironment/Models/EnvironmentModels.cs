@@ -34,7 +34,9 @@ namespace MarineEnvironment.Models
         /// GOCI-II L2 LA TSS mosaic input. Multiple observations are aggregated as a
         /// representative TSS source value; turbidity is exposed separately as a derived result.
         /// </summary>
-        Goci2Tss
+        Goci2Tss,
+        /// <summary>Independent Korean deposit polygon source; raw codes are case-sensitive.</summary>
+        KoreaSediment
     }
 
     public enum SourceStatus
