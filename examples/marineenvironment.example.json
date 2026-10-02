@@ -161,7 +161,7 @@
       "metadata": {
         "dataset": "해양수산부 지능형해상교통정보 수치조류도",
         "temporalKey": "검색 시간",
-        "temporalMode": "per-point nearest-date composite",
+        "temporalMode": "per-point cross-year seasonal U/V vector mean",
         "nativeGeometry": "irregular/curvilinear point vectors"
       }
     },
