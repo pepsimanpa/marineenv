@@ -119,7 +119,7 @@ namespace MarineEnvironment.Sources.Khoa
             metadata["sourceDateMinimum"] = point.SourceDates.Min().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             metadata["sourceDateMaximum"] = point.SourceDates.Max().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             metadata["maximumTemporalOffsetDaysUsed"] = point.TemporalOffsets.Max();
-            metadata["sourceSpeedCmPerSecond"] = point.SpeedMetersPerSecond * 100.0;
+            metadata["meanVectorSpeedCmPerSecond"] = point.SpeedMetersPerSecond * 100.0;
 
             return new EnvironmentValue(
                 Id,
