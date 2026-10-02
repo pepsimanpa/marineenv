@@ -124,6 +124,17 @@ namespace MarineEnvironment.Models
         private static readonly Dictionary<string, KoreaSedimentDefinition> ByCode = BuildByCode();
         public static IReadOnlyList<KoreaSedimentDefinition> All => Definitions;
 
+        public static bool TryGet(int index, out KoreaSedimentDefinition definition)
+        {
+            if (index >= 1 && index <= Definitions.Length && Definitions[index - 1].Index == index)
+            {
+                definition = Definitions[index - 1];
+                return true;
+            }
+            definition = null!;
+            return false;
+        }
+
         public static bool TryGet(string? code, out KoreaSedimentDefinition definition)
         {
             if (string.IsNullOrWhiteSpace(code))
