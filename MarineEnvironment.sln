@@ -10,7 +10,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Goci2Downloader", "src\Goci
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KodcDiagnostics", "src\KodcDiagnostics\KodcDiagnostics.csproj", "{D31BE634-3E99-4D7C-BCC2-F0DE26719FF9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KhoaSeasonalSmoke", "tests\\KhoaSeasonalSmoke\\KhoaSeasonalSmoke.csproj", "{B79C42A1-803D-4B7A-8B9D-4A149E724131}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KhoaSeasonalSmoke", "tests\KhoaSeasonalSmoke\KhoaSeasonalSmoke.csproj", "{B79C42A1-803D-4B7A-8B9D-4A149E724131}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
