@@ -133,7 +133,9 @@ namespace MarineEnvironment.Sources.Korea
                     var outputIndex = (row * query.Width) + column;
                     var category = feature.Definition.Index;
                     values[outputIndex] = category;
-                    labels[outputIndex] = $"{feature.Definition.Code} / {feature.Definition.OriginalClassification}";
+                    var definition = feature.Definition;
+                    labels[outputIndex] = $"{definition.Code} / {definition.OriginalClassification} / "
+                        + $"{definition.ToDerived().SeabedDisplay} / burial {definition.BurialRatePercent:0.#}%";
                     minimum = !minimum.HasValue ? category : Math.Min(minimum.Value, category);
                     maximum = !maximum.HasValue ? category : Math.Max(maximum.Value, category);
                 }
