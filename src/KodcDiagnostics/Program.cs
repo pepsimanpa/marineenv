@@ -23,6 +23,9 @@ namespace KodcDiagnostics
         {
             try
             {
+                if (args.Contains("--full-check") || args.Contains("--compact"))
+                    return FullCycleTool.Run(args);
+
                 var options = ParseArgs(args);
                 if (options == null)
                     return 1;
