@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Goci2Downloader", "src\Goci
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KodcDiagnostics", "src\KodcDiagnostics\KodcDiagnostics.csproj", "{D31BE634-3E99-4D7C-BCC2-F0DE26719FF9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KhoaSeasonalSmoke", "tests\KhoaSeasonalSmoke\KhoaSeasonalSmoke.csproj", "{B79C42A1-803D-4B7A-8B9D-4A149E724131}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,6 +34,10 @@ Global
 		{D31BE634-3E99-4D7C-BCC2-F0DE26719FF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D31BE634-3E99-4D7C-BCC2-F0DE26719FF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D31BE634-3E99-4D7C-BCC2-F0DE26719FF9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B79C42A1-803D-4B7A-8B9D-4A149E724131}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B79C42A1-803D-4B7A-8B9D-4A149E724131}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B79C42A1-803D-4B7A-8B9D-4A149E724131}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B79C42A1-803D-4B7A-8B9D-4A149E724131}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

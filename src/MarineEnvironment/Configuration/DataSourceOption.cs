@@ -34,9 +34,10 @@ namespace MarineEnvironment.Configuration
         public double? MaxNearestDistanceKm { get; init; }
 
         /// <summary>
-        /// Maximum absolute search-date offset used when KHOA point records are composed for
-        /// a requested day. KHOA defaults to 7 days when omitted. Set to 0 for exact-date-only
-        /// behavior. This is a per-point nearest-date selection, not a temporal average.
+        /// Maximum absolute month/day offset used for KHOA seasonal aggregation.
+        /// KHOA defaults to 7 days when omitted. Set to 0 for exact-month/day only.
+        /// At most one nearest record per physical point per available source year
+        /// contributes to the cross-year U/V vector mean; query year and time are ignored.
         /// </summary>
         public int? MaxTemporalOffsetDays { get; init; }
 
