@@ -292,24 +292,31 @@ namespace KodcDiagnostics
             var times = new[] { 0, 9, 18, 37, 46, 55, 74, 83 }
                 .Where(x => x < timeLength).Distinct().ToArray();
 
+            // First try geographically dispersed positions instead of filling
+            // all five samples along the same latitude band.
+            var candidatePairs = new List<(double Latitude, double Longitude)>();
+            for (var i = 0; i < CandidateFractions.Length; i++)
+                candidatePairs.Add((CandidateFractions[i],
+                    CandidateFractions[(i * 3 + 1) % CandidateFractions.Length]));
             foreach (var fLat in CandidateFractions)
-            {
                 foreach (var fLon in CandidateFractions)
-                {
-                    var point = new SamplePoint(
-                        (int)Math.Round((lon.Length - 1) * fLon),
-                        (int)Math.Round((lat.Length - 1) * fLat));
-                    if (!checkedPoints.Add(point.LonIndex + ":" + point.LatIndex))
-                        continue;
+                    candidatePairs.Add((fLat, fLon));
 
-                    var validCount = times.Count(t =>
-                        ReadValue(fileId, dataId, point, 0, t).HasValue);
-                    if (validCount < 2)
-                        continue;
-                    found.Add(point);
-                    if (found.Count >= 5)
-                        return found;
-                }
+            foreach (var candidate in candidatePairs)
+            {
+                var point = new SamplePoint(
+                    (int)Math.Round((lon.Length - 1) * candidate.Longitude),
+                    (int)Math.Round((lat.Length - 1) * candidate.Latitude));
+                if (!checkedPoints.Add(point.LonIndex + ":" + point.LatIndex))
+                    continue;
+
+                var validCount = times.Count(t =>
+                    ReadValue(fileId, dataId, point, 0, t).HasValue);
+                if (validCount < 2)
+                    continue;
+                found.Add(point);
+                if (found.Count >= 5)
+                    return found;
             }
 
             if (found.Count == 0)
