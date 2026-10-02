@@ -10,14 +10,14 @@ namespace MarineEnvironment.Sources.Khoa
 {
     /// <summary>
     /// Reads the Ministry of Oceans and Fisheries / KHOA numerical tidal-current CSV archive.
-    /// The public yearly files are not guaranteed to be date ordered and a single search date
-    /// may cover only part of the overall point set. This reader therefore indexes each physical
-    /// source point as a time series and composes a requested day from the nearest available
-    /// record at each point within a configurable temporal tolerance.
+    /// The public yearly files cover differing days and locations. For each physical point,
+    /// select at most one record per available year closest to the requested month/day
+    /// (within a configurable day tolerance), then return a single cross-year U/V vector mean.
+    /// The result is a seasonal reference vector, not a prediction for a specific instant.
     /// </summary>
     internal sealed class KhoaDailyCurrentCsvDataSource : IEnvironmentDataSource
     {
-        private const int MaxCachedYears = 2;
+        private const int MaxCachedYears = 8;
         private const int MaxCachedComposites = 6;
         private const double BucketSizeDegrees = 0.25;
         private const double CanonicalPointToleranceMeters = 5.0;
@@ -77,7 +77,7 @@ namespace MarineEnvironment.Sources.Khoa
                 var maxYear = _yearFiles.Keys.Max();
                 Status = SourceStatus.Ready;
                 StatusMessage =
-                    $"{_yearFiles.Count} yearly CSV file(s), {minYear}-{maxYear} / per-point nearest-date composite ±{_maxTemporalOffsetDays} day(s) / canonical identity {CanonicalPointToleranceMeters:0.#} m";
+                    $"{_yearFiles.Count} yearly CSV file(s), {minYear}-{maxYear} / cross-year monthly-day U/V vector mean ±{_maxTemporalOffsetDays} day(s) / canonical identity {CanonicalPointToleranceMeters:0.#} m";
             }
             catch (FileNotFoundException ex)
             {
@@ -114,8 +114,11 @@ namespace MarineEnvironment.Sources.Khoa
             var current = ToCurrentValue(point);
             var metadata = CreateMetadata(data);
             metadata["nearestDistanceKm"] = nearest.Value.DistanceKm;
-            metadata["sourceDate"] = point.SourceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            metadata["temporalOffsetDays"] = point.TemporalOffsetDays;
+            metadata["sourceSampleCount"] = point.SourceDates.Length;
+            metadata["sourceYears"] = string.Join(",", point.SourceDates.Select(x => x.Year).Distinct().OrderBy(x => x));
+            metadata["sourceDateMinimum"] = point.SourceDates.Min().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            metadata["sourceDateMaximum"] = point.SourceDates.Max().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            metadata["maximumTemporalOffsetDaysUsed"] = point.TemporalOffsets.Max();
             metadata["sourceSpeedCmPerSecond"] = point.SpeedMetersPerSecond * 100.0;
 
             return new EnvironmentValue(
@@ -126,8 +129,8 @@ namespace MarineEnvironment.Sources.Khoa
                 point.Latitude,
                 point.Longitude,
                 null,
-                point.SourceDate,
-                "KHOA numerical tidal-current vector",
+                requestedDay,
+                "KHOA cross-year seasonal mean current vector",
                 metadata);
         }
 
@@ -197,8 +200,8 @@ namespace MarineEnvironment.Sources.Khoa
                     x.Longitude,
                     x.SpeedMetersPerSecond,
                     x.DirectionDegrees,
-                    x.SourceDate,
-                    x.TemporalOffsetDays))
+                    null,
+                    null))
                 .ToArray();
 
             var metadata = CreateMetadata(data);
@@ -209,7 +212,7 @@ namespace MarineEnvironment.Sources.Khoa
             metadata["nativeVectorCountInView"] = nativeVectors.Length;
 
             if (data.Points.Count == 0)
-                metadata["noDataReason"] = $"No source records within ±{_maxTemporalOffsetDays} day(s) of {requestedDay:yyyy-MM-dd}.";
+                metadata["noDataReason"] = $"No cross-year source records within ±{_maxTemporalOffsetDays} day(s) of month/day {requestedDay:MM-dd}.";
 
             return new GridResult
             {
@@ -224,7 +227,7 @@ namespace MarineEnvironment.Sources.Khoa
                 CurrentVectors = nativeVectors,
                 Unit = "m/s",
                 DateTime = requestedDay,
-                Variable = "KHOA numerical tidal-current speed / nearest-date composite",
+                Variable = "KHOA cross-year seasonal mean current speed",
                 Minimum = minimum,
                 Maximum = maximum,
                 Metadata = metadata
@@ -306,72 +309,88 @@ namespace MarineEnvironment.Sources.Khoa
 
         private CompositeData BuildCompositeData(DateTime requestedDay)
         {
-            var startDay = requestedDay.AddDays(-_maxTemporalOffsetDays);
-            var endDay = requestedDay.AddDays(_maxTemporalOffsetDays);
-            var indexes = new List<YearIndex>();
-
-            for (var year = startDay.Year; year <= endDay.Year; year++)
-            {
-                if (_yearFiles.ContainsKey(year))
-                    indexes.Add(GetYearIndex(year));
-            }
-
-            if (indexes.Count == 0)
-                return CompositeData.Empty(requestedDay, _maxTemporalOffsetDays);
-
+            // The query year and time of day do not affect source selection. Read every
+            // available year; each site contributes at most one nearest seasonal record/year.
+            var indexes = _yearFiles.Keys.OrderBy(year => year).Select(GetYearIndex).ToList();
             var canonicalIds = new HashSet<int>();
-            var selected = new Dictionary<int, TemporalSample>();
+            var selected = new Dictionary<int, List<TemporalSample>>();
             var coordinateVariants = new HashSet<(double Latitude, double Longitude)>();
+            var usedYears = new HashSet<int>();
 
             foreach (var index in indexes)
             {
                 coordinateVariants.UnionWith(index.CoordinateVariants);
-
                 foreach (var pair in index.SeriesByPoint)
                 {
                     canonicalIds.Add(pair.Key);
-
-                    var sample = pair.Value.FindNearest(requestedDay, _maxTemporalOffsetDays);
+                    var sample = pair.Value.FindSeasonalNearest(
+                        requestedDay.Month, requestedDay.Day, _maxTemporalOffsetDays);
                     if (!sample.HasValue)
                         continue;
 
-                    if (!selected.TryGetValue(pair.Key, out var existing)
-                        || IsBetterSample(sample.Value, existing, requestedDay))
+                    if (!selected.TryGetValue(pair.Key, out var samples))
                     {
-                        selected[pair.Key] = sample.Value;
+                        samples = new List<TemporalSample>();
+                        selected.Add(pair.Key, samples);
                     }
+                    samples.Add(sample.Value);
+                    usedYears.Add(index.Year);
                 }
             }
 
-            var points = selected.Values
-                .Select(x => new CurrentPoint(
-                    x.Latitude,
-                    x.Longitude,
-                    x.SpeedMetersPerSecond,
-                    x.DirectionDegrees,
-                    x.Date,
-                    Math.Abs((x.Date - requestedDay).Days)))
-                .ToList();
+            var points = selected.Select(pair =>
+            {
+                var samples = pair.Value;
+                double eastward = 0;
+                double northward = 0;
+                foreach (var sample in samples)
+                {
+                    // The KHOA direction convention remains explicitly documented as
+                    // an assumption: clockwise flow-toward from true north.
+                    var radians = sample.DirectionDegrees * Math.PI / 180.0;
+                    eastward += sample.SpeedMetersPerSecond * Math.Sin(radians);
+                    northward += sample.SpeedMetersPerSecond * Math.Cos(radians);
+                }
+                eastward /= samples.Count;
+                northward /= samples.Count;
+                var speed = Math.Sqrt(eastward * eastward + northward * northward);
+                // Direction is undefined for a stationary mean; retain a deterministic
+                // 0-degree placeholder because CurrentValue.Direction is non-nullable.
+                var direction = speed < 1e-12
+                    ? 0.0
+                    : (Math.Atan2(eastward, northward) * 180.0 / Math.PI + 360.0) % 360.0;
+                if (speed < 1e-12)
+                    eastward = northward = speed = 0.0;
 
-            var sourceFiles = indexes
+                var canonical = GetCanonicalPoint(pair.Key);
+                return new CurrentPoint(
+                    canonical.Latitude,
+                    canonical.Longitude,
+                    eastward,
+                    northward,
+                    speed,
+                    direction,
+                    samples.Select(x => x.Date).ToArray(),
+                    samples.Select(x => Math.Abs(GetSeasonalSignedOffsetDays(
+                        x.Date, requestedDay.Month, requestedDay.Day))).ToArray());
+            }).ToList();
+
+            var sourceFiles = indexes.Where(x => usedYears.Contains(x.Year))
                 .Select(x => x.Path)
                 .Where(x => !string.IsNullOrEmpty(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            var skippedRows = indexes.Sum(x => x.SkippedRows);
-            var parsedRows = indexes.Sum(x => x.ParsedRows);
-            var approximateSpacingKm = EstimateApproximateSpacing(GetCanonicalCoordinates(canonicalIds));
 
             return new CompositeData(
                 requestedDay,
                 points,
                 canonicalIds.Count,
                 coordinateVariants.Count,
-                parsedRows,
-                skippedRows,
+                indexes.Sum(x => x.ParsedRows),
+                indexes.Sum(x => x.SkippedRows),
                 sourceFiles,
                 _maxTemporalOffsetDays,
-                approximateSpacingKm);
+                EstimateApproximateSpacing(GetCanonicalCoordinates(canonicalIds)));
         }
 
         private YearIndex GetYearIndex(int year)
@@ -630,10 +649,15 @@ namespace MarineEnvironment.Sources.Khoa
                 ? existing
                 : "KHOA intelligent maritime traffic numerical tidal-current CSV";
             metadata["sourceGeometry"] = "IrregularCurvilinearPointCloud";
-            metadata["sourceTemporalKey"] = "search date";
+            metadata["sourceTemporalKey"] = "search date (day only)";
             metadata["timeOfDayAvailable"] = false;
-            metadata["temporalMode"] = "PerPointNearestDateComposite";
+            metadata["temporalMode"] = "PerPointCrossYearSeasonalVectorMean";
+            metadata["aggregation"] = "One nearest month/day record per year per point, then unweighted U/V vector mean";
+            metadata["queryYearIgnored"] = true;
+            metadata["directionUndefinedWhenCalm"] = true;
             metadata["requestedDate"] = data.RequestedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            metadata["requestedMonthDay"] = data.RequestedDate.ToString("MM-dd", CultureInfo.InvariantCulture);
+            metadata["contributingYearCount"] = data.SourceFiles.Length;
             metadata["maxTemporalOffsetDays"] = _maxTemporalOffsetDays;
             metadata["sourceSpeedUnit"] = "cm/s";
             metadata["outputSpeedUnit"] = "m/s";
@@ -679,37 +703,30 @@ namespace MarineEnvironment.Sources.Khoa
             _compositeCacheLru.AddLast(day);
         }
 
-        private static bool IsBetterSample(TemporalSample candidate, TemporalSample existing, DateTime requestedDay)
+        // Signed offset from the same month/day in the source record's calendar year.
+        // Also consider adjacent-year anchors to handle windows crossing New Year's Day.
+        // Feb 29 is mapped to Feb 28 for source years without a leap day.
+        private static int GetSeasonalSignedOffsetDays(DateTime sourceDate, int month, int day)
         {
-            var candidateOffset = Math.Abs((candidate.Date - requestedDay).Days);
-            var existingOffset = Math.Abs((existing.Date - requestedDay).Days);
-            if (candidateOffset != existingOffset)
-                return candidateOffset < existingOffset;
-
-            var candidateIsPast = candidate.Date <= requestedDay;
-            var existingIsPast = existing.Date <= requestedDay;
-            if (candidateIsPast != existingIsPast)
-                return candidateIsPast;
-
-            if (candidate.Date != existing.Date)
-                return candidateIsPast ? candidate.Date > existing.Date : candidate.Date < existing.Date;
-
-            return false;
+            var anchor = new DateTime(sourceDate.Year, month,
+                Math.Min(day, DateTime.DaysInMonth(sourceDate.Year, month)));
+            var best = (sourceDate - anchor).Days;
+            foreach (var candidate in new[] { anchor.AddYears(-1), anchor.AddYears(1) })
+            {
+                var offset = (sourceDate - candidate).Days;
+                if (Math.Abs(offset) < Math.Abs(best)
+                    || (Math.Abs(offset) == Math.Abs(best) && offset < best))
+                    best = offset;
+            }
+            return best;
         }
 
         private static CurrentValue ToCurrentValue(CurrentPoint point)
         {
-            // KHOA publishes speed + direction rather than U/V. Until the public metadata
-            // explicitly states otherwise, the implementation treats 유향 as oceanographic
-            // flow-toward bearing clockwise from true north. The assumption is exposed in metadata.
-            var radians = point.DirectionDegrees * Math.PI / 180.0;
-            var eastward = point.SpeedMetersPerSecond * Math.Sin(radians);
-            var northward = point.SpeedMetersPerSecond * Math.Cos(radians);
-
             return new CurrentValue
             {
-                EastwardVelocity = eastward,
-                NorthwardVelocity = northward,
+                EastwardVelocity = point.EastwardVelocity,
+                NorthwardVelocity = point.NorthwardVelocity,
                 Speed = point.SpeedMetersPerSecond,
                 Direction = point.DirectionDegrees,
                 ConstituentCount = 0
@@ -914,14 +931,14 @@ namespace MarineEnvironment.Sources.Khoa
 
                 if (points.Count > 0)
                 {
-                    var offsets = points.Select(x => x.TemporalOffsetDays).OrderBy(x => x).ToArray();
+                    var offsets = points.SelectMany(x => x.TemporalOffsets).OrderBy(x => x).ToArray();
                     var middle = offsets.Length / 2;
                     MedianTemporalOffsetDays = offsets.Length % 2 == 1
                         ? offsets[middle]
                         : (offsets[middle - 1] + offsets[middle]) / 2.0;
                     MaximumTemporalOffsetDaysUsed = offsets[offsets.Length - 1];
-                    SourceDateMinimum = points.Min(x => x.SourceDate);
-                    SourceDateMaximum = points.Max(x => x.SourceDate);
+                    SourceDateMinimum = points.SelectMany(x => x.SourceDates).Min();
+                    SourceDateMaximum = points.SelectMany(x => x.SourceDates).Max();
                 }
             }
 
@@ -1105,38 +1122,24 @@ namespace MarineEnvironment.Sources.Khoa
                 Samples.Sort((a, b) => a.Date.CompareTo(b.Date));
             }
 
-            public TemporalSample? FindNearest(DateTime requestedDay, int maxTemporalOffsetDays)
+            public TemporalSample? FindSeasonalNearest(int month, int day, int maxTemporalOffsetDays)
             {
-                if (Samples.Count == 0)
-                    return null;
-
-                var low = 0;
-                var high = Samples.Count;
-                while (low < high)
-                {
-                    var mid = low + ((high - low) / 2);
-                    if (Samples[mid].Date < requestedDay)
-                        low = mid + 1;
-                    else
-                        high = mid;
-                }
-
                 TemporalSample? best = null;
-                if (low < Samples.Count)
-                    best = Samples[low];
-                if (low > 0)
+                var bestOffset = int.MaxValue;
+                foreach (var sample in Samples)
                 {
-                    var previous = Samples[low - 1];
-                    if (!best.HasValue || IsBetterSample(previous, best.Value, requestedDay))
-                        best = previous;
+                    var offset = GetSeasonalSignedOffsetDays(sample.Date, month, day);
+                    if (Math.Abs(offset) > maxTemporalOffsetDays)
+                        continue;
+                    if (!best.HasValue
+                        || Math.Abs(offset) < Math.Abs(bestOffset)
+                        || (Math.Abs(offset) == Math.Abs(bestOffset) && offset < bestOffset))
+                    {
+                        best = sample;
+                        bestOffset = offset;
+                    }
                 }
-
-                if (!best.HasValue)
-                    return null;
-
-                return Math.Abs((best.Value.Date - requestedDay).Days) <= maxTemporalOffsetDays
-                    ? best
-                    : null;
+                return best;
             }
         }
 
@@ -1145,25 +1148,31 @@ namespace MarineEnvironment.Sources.Khoa
             public CurrentPoint(
                 double latitude,
                 double longitude,
+                double eastwardVelocity,
+                double northwardVelocity,
                 double speedMetersPerSecond,
                 double directionDegrees,
-                DateTime sourceDate,
-                int temporalOffsetDays)
+                DateTime[] sourceDates,
+                int[] temporalOffsets)
             {
                 Latitude = latitude;
                 Longitude = longitude;
+                EastwardVelocity = eastwardVelocity;
+                NorthwardVelocity = northwardVelocity;
                 SpeedMetersPerSecond = speedMetersPerSecond;
                 DirectionDegrees = directionDegrees;
-                SourceDate = sourceDate.Date;
-                TemporalOffsetDays = temporalOffsetDays;
+                SourceDates = sourceDates;
+                TemporalOffsets = temporalOffsets;
             }
 
             public double Latitude { get; }
             public double Longitude { get; }
+            public double EastwardVelocity { get; }
+            public double NorthwardVelocity { get; }
             public double SpeedMetersPerSecond { get; }
             public double DirectionDegrees { get; }
-            public DateTime SourceDate { get; }
-            public int TemporalOffsetDays { get; }
+            public DateTime[] SourceDates { get; }
+            public int[] TemporalOffsets { get; }
         }
 
         private readonly struct TemporalSample
