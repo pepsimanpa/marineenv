@@ -23,7 +23,7 @@ namespace MarineEnvironment.Viewer
         private void BrowseConfig_Click(object s,RoutedEventArgs e){var d=new OpenFileDialog{Filter="MarineEnvironment config (*.json)|*.json|All files (*.*)|*.*",CheckFileExists=true};if(d.ShowDialog(this)==true)ConfigPathTextBox.Text=d.FileName;}
         private void LoadConfig_Click(object s,RoutedEventArgs e){try{var p=ConfigPathTextBox.Text.Trim();if(string.IsNullOrWhiteSpace(p)){MessageBox.Show(this,"Select marineenvironment.json first.");return;}var r=_manager.Initialize(p);SourceListBox.ItemsSource=r.Sources;SourceListBox.SelectedItem=r.Sources.FirstOrDefault(x=>x.Status==SourceStatus.Ready)??r.Sources.FirstOrDefault();StatusText.Text=$"Configuration loaded. {r.Sources.Count} source(s), {r.Sources.Count(x=>x.Status==SourceStatus.Ready)} READY.";}catch(Exception ex){MessageBox.Show(this,ex.Message,"Configuration error",MessageBoxButton.OK,MessageBoxImage.Error);}}
         private void SourceListBox_SelectionChanged(object s,SelectionChangedEventArgs e){_selectedSource=SourceListBox.SelectedItem as SourceState;if(_selectedSource==null){SelectedSourceStatusText.Text="";return;}var pointCloud=!string.IsNullOrWhiteSpace(_selectedSource.Message)&&(_selectedSource.Message.IndexOf("daily vector points",StringComparison.OrdinalIgnoreCase)>=0||_selectedSource.Message.IndexOf("paired bathymetry points",StringComparison.OrdinalIgnoreCase)>=0);var resolutionNote=_selectedSource.Type==EnvironmentType.Seabed?"\nResolution: vector polygons; Width/Height controls display rasterization.":pointCloud?"\nResolution: irregular source points; Width/Height controls display rasterization.":"\nResolution: Source Native is the default render mode for gridded sources.";SelectedSourceStatusText.Text=$"{_selectedSource.Type} / {_selectedSource.Status}"+(string.IsNullOrWhiteSpace(_selectedSource.Message)?"":$"\n{_selectedSource.Message}")+resolutionNote;}
-        private async void Render_Click(object s,RoutedEventArgs e){if(_selectedSource==null||_selectedSource.Status!=SourceStatus.Ready){MessageBox.Show(this,"Select a READY source first.");return;}if(!TryReadDouble(MinLatTextBox,out var a)||!TryReadDouble(MaxLatTextBox,out var b)||!TryReadDouble(MinLonTextBox,out var c)||!TryReadDouble(MaxLonTextBox,out var d)||!TryReadInt(GridWidthTextBox,out var w)||!TryReadInt(GridHeightTextBox,out var h)){MessageBox.Show(this,"Check view bounds and custom/display raster size.");return;}double? depth=null;if(!string.IsNullOrWhiteSpace(DepthTextBox.Text)){if(!TryReadDouble(DepthTextBox,out var dp)){MessageBox.Show(this,"Depth must be numeric or blank.");return;}depth=dp;}var resolutionMode=RenderResolutionComboBox.SelectedIndex==0?GridResolutionMode.SourceNative:GridResolutionMode.Custom;var q=new GridQuery{MinLatitude=a,MaxLatitude=b,MinLongitude=c,MaxLongitude=d,Depth=depth,DateTime=GetSelectedQueryDate(),Width=w,Height=h,ResolutionMode=resolutionMode};try{RenderButton.IsEnabled=false;Mouse.OverrideCursor=Cursors.Wait;var g=await Task.Run(()=>_manager.QueryGrid(_selectedSource.Id,q));if(g.Width<1||g.Height<1)throw new InvalidOperationException("The requested view does not intersect any renderable source cells.");_currentGrid=g;MapImage.Source=CreateBitmap(g);DrawCurrentVectors(g);EmptyMapText.Visibility=Visibility.Collapsed;MapTitleText.Text=$"{g.SourceId} / {g.Type}";RangeText.Text=g.Type==EnvironmentType.Seabed?"SHOM categorical sediment / official legend colors":!g.Minimum.HasValue||!g.Maximum.HasValue?"No valid values":$"Min {FormatValue(g.Minimum)} | Max {FormatValue(g.Maximum)} {g.Unit}";ResolutionText.Text=BuildResolutionText(g,resolutionMode);PointResultsPanel.Visibility=Visibility.Collapsed;ResetMapTransform();ScaleBarPanel.Visibility=Visibility.Visible;UpdateScaleBar();StatusText.Text=$"Rendered {g.Width} x {g.Height} samples ({EffectiveResolutionMode(g,resolutionMode)}) for {q.DateTime:yyyy-MM-dd}.";}catch(Exception ex){MessageBox.Show(this,ex.ToString(),"Render error",MessageBoxButton.OK,MessageBoxImage.Error);}finally{Mouse.OverrideCursor=null;RenderButton.IsEnabled=true;}}
+        private async void Render_Click(object s,RoutedEventArgs e){if(_selectedSource==null||_selectedSource.Status!=SourceStatus.Ready){MessageBox.Show(this,"Select a READY source first.");return;}if(!TryReadDouble(MinLatTextBox,out var a)||!TryReadDouble(MaxLatTextBox,out var b)||!TryReadDouble(MinLonTextBox,out var c)||!TryReadDouble(MaxLonTextBox,out var d)||!TryReadInt(GridWidthTextBox,out var w)||!TryReadInt(GridHeightTextBox,out var h)){MessageBox.Show(this,"Check view bounds and custom/display raster size.");return;}double? depth=null;if(!string.IsNullOrWhiteSpace(DepthTextBox.Text)){if(!TryReadDouble(DepthTextBox,out var dp)){MessageBox.Show(this,"Depth must be numeric or blank.");return;}depth=dp;}var resolutionMode=RenderResolutionComboBox.SelectedIndex==0?GridResolutionMode.SourceNative:GridResolutionMode.Custom;var q=new GridQuery{MinLatitude=a,MaxLatitude=b,MinLongitude=c,MaxLongitude=d,Depth=depth,DateTime=GetSelectedQueryDate(),Width=w,Height=h,ResolutionMode=resolutionMode};try{RenderButton.IsEnabled=false;Mouse.OverrideCursor=Cursors.Wait;var g=await Task.Run(()=>_manager.QueryGrid(_selectedSource.Id,q));if(g.Width<1||g.Height<1)throw new InvalidOperationException("The requested view does not intersect any renderable source cells.");_currentGrid=g;MapImage.Source=CreateBitmap(g);DrawCurrentVectors(g);EmptyMapText.Visibility=Visibility.Collapsed;MapTitleText.Text=$"{g.SourceId} / {g.Type}";RangeText.Text=g.Type==EnvironmentType.Seabed?(string.Equals(TryGetMetadataString(g,"classificationScheme"),"KoreaDeposit",StringComparison.Ordinal)?"Korea deposit / project classification colors":"SHOM categorical sediment / official legend colors"):!g.Minimum.HasValue||!g.Maximum.HasValue?"No valid values":$"Min {FormatValue(g.Minimum)} | Max {FormatValue(g.Maximum)} {g.Unit}";ResolutionText.Text=BuildResolutionText(g,resolutionMode);PointResultsPanel.Visibility=Visibility.Collapsed;ResetMapTransform();ScaleBarPanel.Visibility=Visibility.Visible;UpdateScaleBar();StatusText.Text=$"Rendered {g.Width} x {g.Height} samples ({EffectiveResolutionMode(g,resolutionMode)}) for {q.DateTime:yyyy-MM-dd}.";}catch(Exception ex){MessageBox.Show(this,ex.ToString(),"Render error",MessageBoxButton.OK,MessageBoxImage.Error);}finally{Mouse.OverrideCursor=null;RenderButton.IsEnabled=true;}}
         private void ZoomIn_Click(object s,RoutedEventArgs e)=>ZoomAt(new Point(MapViewport.ActualWidth/2,MapViewport.ActualHeight/2),ZoomStep); private void ZoomOut_Click(object s,RoutedEventArgs e)=>ZoomAt(new Point(MapViewport.ActualWidth/2,MapViewport.ActualHeight/2),1/ZoomStep); private void ResetZoom_Click(object s,RoutedEventArgs e)=>ResetMapTransform();
         private void MapViewport_MouseWheel(object s,MouseWheelEventArgs e){if(_currentGrid==null)return;ZoomAt(e.GetPosition(MapViewport),e.Delta>0?ZoomStep:1/ZoomStep);e.Handled=true;}
         private void MapViewport_MouseLeftButtonDown(object s,MouseButtonEventArgs e){if(_currentGrid==null)return;_isPanning=true;_dragMoved=false;_panStart=e.GetPosition(MapViewport);_panOrigin=new Point(_panX,_panY);MapViewport.CaptureMouse();MapViewport.Cursor=Cursors.SizeAll;e.Handled=true;}
@@ -43,7 +43,61 @@ namespace MarineEnvironment.Viewer
         private static string? TryGetMetadataString(GridResult g,string key){if(g.Metadata==null||!g.Metadata.TryGetValue(key,out var value)||value==null)return null;return Convert.ToString(value,CultureInfo.InvariantCulture);}
         private static string FormatAngularSpacing(double arcSeconds){if(Math.Abs(arcSeconds-60.0)<0.01)return "1' (60\")";if(arcSeconds>=60)return $"{arcSeconds/60.0:0.###}' ({arcSeconds:0.###}\")";return $"{arcSeconds:0.###}\"";}
         private static BitmapSource CreateBitmap(GridResult g){if(g.Type==EnvironmentType.Seabed)return CreateSeabedBitmap(g);var px=new byte[checked(g.Width*g.Height*4)];var min=g.Minimum??0;var max=g.Maximum??1;var range=Math.Abs(max-min)<1e-12?1:max-min;for(var i=0;i<g.Values.Length;i++){var o=i*4;var value=g.Values[i];if(!value.HasValue||double.IsNaN(value.Value)||double.IsInfinity(value.Value)){px[o]=245;px[o+1]=245;px[o+2]=245;px[o+3]=255;continue;}var t=Math.Max(0,Math.Min(1,(value.Value-min)/range));var rgb=TurboLike(t);px[o]=rgb.b;px[o+1]=rgb.g;px[o+2]=rgb.r;px[o+3]=255;}var bmp=BitmapSource.Create(g.Width,g.Height,96,96,PixelFormats.Bgra32,null,px,g.Width*4);bmp.Freeze();return bmp;}
-        private static BitmapSource CreateSeabedBitmap(GridResult g){var px=new byte[checked(g.Width*g.Height*4)];for(var i=0;i<g.Values.Length;i++){var o=i*4;var value=g.Values[i];if(!value.HasValue||!ShomSedimentCatalog.TryGet((int)Math.Round(value.Value),out var sediment)){px[o]=245;px[o+1]=245;px[o+2]=245;px[o+3]=255;continue;}px[o]=sediment.Blue;px[o+1]=sediment.Green;px[o+2]=sediment.Red;px[o+3]=255;}var bmp=BitmapSource.Create(g.Width,g.Height,96,96,PixelFormats.Bgra32,null,px,g.Width*4);bmp.Freeze();return bmp;}
+        private static BitmapSource CreateSeabedBitmap(GridResult g)
+        {
+            var korea = string.Equals(TryGetMetadataString(g, "classificationScheme"),
+                "KoreaDeposit", StringComparison.Ordinal);
+            var px = new byte[checked(g.Width * g.Height * 4)];
+            for (var i = 0; i < g.Values.Length; i++)
+            {
+                var o = i * 4;
+                var value = g.Values[i];
+                if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+                {
+                    px[o] = px[o + 1] = px[o + 2] = 245;
+                    px[o + 3] = 255;
+                    continue;
+                }
+
+                byte r, green, blue;
+                var category = (int)Math.Round(value.Value);
+                if (korea)
+                {
+                    if (!KoreaSedimentCatalog.TryGet(category, out var definition))
+                    {
+                        px[o] = px[o + 1] = px[o + 2] = 245;
+                        px[o + 3] = 255;
+                        continue;
+                    }
+                    // Color by domestic operational class, never by SHOM index.
+                    var mud = definition.MudPercent;
+                    if (!mud.HasValue) (r, green, blue) = (104, 104, 104);
+                    else if (mud.Value == 0) (r, green, blue) = (255, 255, 0);
+                    else if (mud.Value == 50) (r, green, blue) = (245, 250, 92);
+                    else if (mud.Value == 70) (r, green, blue) = (153, 232, 240);
+                    else if (mud.Value == 80) (r, green, blue) = (200, 255, 255);
+                    else (r, green, blue) = (200, 200, 255);
+                }
+                else
+                {
+                    if (!ShomSedimentCatalog.TryGet(category, out var definition))
+                    {
+                        px[o] = px[o + 1] = px[o + 2] = 245;
+                        px[o + 3] = 255;
+                        continue;
+                    }
+                    (r, green, blue) = (definition.Red, definition.Green, definition.Blue);
+                }
+                px[o] = blue;
+                px[o + 1] = green;
+                px[o + 2] = r;
+                px[o + 3] = 255;
+            }
+            var bmp = BitmapSource.Create(g.Width, g.Height, 96, 96,
+                PixelFormats.Bgra32, null, px, g.Width * 4);
+            bmp.Freeze();
+            return bmp;
+        }
         private static (byte r,byte g,byte b) TurboLike(double t){var stops=new (double t,byte r,byte g,byte b)[]{(0.00,48,18,59),(0.20,50,84,179),(0.40,31,174,174),(0.60,150,214,75),(0.80,249,154,28),(1.00,180,4,38)};for(var i=1;i<stops.Length;i++){if(t>stops[i].t)continue;var a=stops[i-1];var b=stops[i];var u=(t-a.t)/(b.t-a.t);return((byte)Math.Round(a.r+(b.r-a.r)*u),(byte)Math.Round(a.g+(b.g-a.g)*u),(byte)Math.Round(a.b+(b.b-a.b)*u));}var z=stops[stops.Length-1];return(z.r,z.g,z.b);}
     }
 }
