@@ -76,7 +76,7 @@ namespace MarineEnvironment.Models
 
     /// <summary>
     /// The 22-case project mapping agreed for the domestic shapefile deposit codes.
-    /// The maximum sand-major mixed category is the operational 50/50 class.
+    /// The minimum non-rock operational seabed category is the project-defined 50/50 class.
     /// Codes are CASE SENSITIVE: 'mS' (muddy sand) != 'sM' (sandy mud).
     /// </summary>
     public static class KoreaSedimentCatalog
@@ -92,10 +92,11 @@ namespace MarineEnvironment.Models
             D(4, "msG", "Muddy Sandy Gravel", "암반/자갈", "암반", null, null, 0),
             D(5, "mG", "Muddy Gravel", "암반/자갈", "암반", null, null, 0),
 
-            // Pure/operationally sand-dominant types.
-            D(6, "S", "Sand", "모래", "모래", 0, 100, 5),
-            D(7, "(g)S", "Slightly Gravelly Sand", "모래", "모래", 0, 100, 5),
-            D(8, "gS", "Gravelly Sand", "모래", "모래", 0, 100, 5),
+            // Sand source classes retain their original/primary meaning, but the project-derived
+            // operational seabed scale starts at 50/50. No derived 0/100 category is emitted.
+            D(6, "S", "Sand", "모래", "뻘·모래 반반", 50, 50, 5),
+            D(7, "(g)S", "Slightly Gravelly Sand", "모래", "뻘·모래 반반", 50, 50, 5),
+            D(8, "gS", "Gravelly Sand", "모래", "뻘·모래 반반", 50, 50, 5),
 
             // The agreed scheme has no 30% mud / 70% sand category. These
             // sand-major mixed types use the operational 50/50 category.
