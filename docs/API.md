@@ -137,7 +137,49 @@ source-raster oriented; the unified derived contract currently applies to point
 queries.
 
 
-## 5. Query concurrency and GOCI-II warm-up
+## 5. Calculate a seabed-grade analysis grid
+
+`QuerySeabedGradeGrid` divides a rectangular area into analysis cells and
+calculates one operational grade (A1..D3) at each cell center.
+
+```csharp
+var grades = env.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+{
+    MinLatitude = 34.0,
+    MaxLatitude = 35.0,
+    MinLongitude = 128.0,
+    MaxLongitude = 129.0,
+    GridMode = SeabedGradeGridMode.CellCount,
+    Columns = 20,
+    Rows = 10,
+    ContactDensity = 1,          // default
+    Terrain = SeabedTerrain.Flat // default
+});
+
+var cell = grades.GetCell(0, 0);
+Console.WriteLine($"{cell.Grade} from {cell.SourceId}");
+```
+
+Alternatively set `GridMode = CellSizeKilometers` and
+`CellSizeKilometers`; the DLL determines rows/columns from the requested
+geographic bounds.
+
+Seabed sources are selected per cell using `DataSourceOption.Priority`:
+lower numbers are tried first, and a lower-priority source is used only when a
+higher-priority source has no usable mapped seabed value at that cell center.
+This priority affects the seabed-grade fallback workflow only. Normal
+`Query` and `QuerySource` calls still return independent source results.
+
+Recommended configuration is domestic sediment priority 10 and SHOM priority 20.
+
+The grade table uses project-derived seabed/burial values plus two caller inputs:
+`ContactDensity` (1..3) and `SeabedTerrain` (Flat/Normal/Rough).
+`SeabedGradeGridResult.Cells` preserves the selected source ID, source
+priority, original source code/classification, operational mud/sand fraction,
+burial rate, grade bucket and final grade. `ToGridResult()` provides an
+A1..D3 display raster for the validation Viewer.
+
+## 6. Query concurrency and GOCI-II warm-up
 
 Public `Query`, `QuerySource`, and `QueryGrid` calls are serialized inside
 `MarineEnvironmentManager`. This is intentional because the library shares source-reader

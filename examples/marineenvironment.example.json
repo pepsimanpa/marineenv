@@ -7,10 +7,10 @@
     "porositySourceId": "MARTIN2015_POROSITY",
     "neighborhoodSize": 3,
     "calibrationStride": 4,
-    "calibrationMinLatitude": 32.0,
-    "calibrationMaxLatitude": 43.0,
-    "calibrationMinLongitude": 122.0,
-    "calibrationMaxLongitude": 133.0,
+    "calibrationMinLatitude": 32,
+    "calibrationMaxLatitude": 43,
+    "calibrationMinLongitude": 122,
+    "calibrationMaxLongitude": 133,
     "porosityLowPercent": 53.34,
     "porosityHighPercent": 71.96,
     "rockDecisionThreshold": 0.5
@@ -40,7 +40,7 @@
       "latitudeVariable": "LAT",
       "longitudeVariable": "LON",
       "unit": "m",
-      "maxNearestDistanceKm": 10.0,
+      "maxNearestDistanceKm": 10,
       "metadata": {
         "dataset": "BADA2024 격자형수심 v1.1",
         "verticalReference": "MSL",
@@ -156,7 +156,7 @@
       "enabled": false,
       "path": "../db/해양수산부_수치조류도_20260401",
       "filePattern": "해양수산부_지능형해상교통정보_수치조류도_{YYYY}.csv",
-      "maxNearestDistanceKm": 30.0,
+      "maxNearestDistanceKm": 30,
       "maxTemporalOffsetDays": 7,
       "metadata": {
         "dataset": "해양수산부 지능형해상교통정보 수치조류도",
@@ -211,7 +211,8 @@
       "metadata": {
         "dataset": "Korea sediment deposits type",
         "note": "Independent domestic deposit codes (case-sensitive); project-derived sediment category and burial rate returned separately. Keep SHP/SHX/DBF/PRJ together."
-      }
+      },
+      "priority": 10
     },
     {
       "id": "SHOM_SEABED",
@@ -223,7 +224,8 @@
       "seabedMappingPath": "./shom.seabed.mapping.example.json",
       "metadata": {
         "dataset": "SHOM Worldwide Seabed Sediment Map"
-      }
+      },
+      "priority": 20
     }
   ]
 }

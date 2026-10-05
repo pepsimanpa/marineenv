@@ -27,6 +27,13 @@ namespace MarineEnvironment.Configuration
         public string? Unit { get; init; }
 
         /// <summary>
+        /// Selection priority used only by derived/fallback workflows that must choose
+        /// one source among multiple sources of the same type. Lower values win.
+        /// Normal Query/QuerySource calls remain independent and are not filtered by priority.
+        /// </summary>
+        public int Priority { get; init; } = 100;
+
+        /// <summary>
         /// Optional nearest-point cutoff in kilometers for irregular point-cloud sources.
         /// KHOA tidal-current CSV defaults to 30 km and BADA bathymetry defaults to 10 km when omitted.
         /// Source-specific readers define whether zero/negative values are permitted.

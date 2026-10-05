@@ -50,7 +50,13 @@ namespace MarineEnvironment.Viewer
                     DateTime = date
                 }));
 
-                var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToArray();
+                var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToList();
+                if (_currentSeabedGradeResult != null)
+                {
+                    var gradeCell = _currentSeabedGradeResult.GetCell(row, column);
+                    if (gradeCell.HasGrade)
+                        derivedRows.Insert(0, CreateSeabedGradeDerivedRow(gradeCell));
+                }
 
                 PointQueryText.Text =
                     $"Point API: {result.SourceCount} source / {result.DerivedCount} derived";
@@ -72,7 +78,7 @@ namespace MarineEnvironment.Viewer
                 }).ToArray();
 
                 DerivedResultsGrid.ItemsSource = derivedRows;
-                DerivedResultsPanel.Visibility = derivedRows.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+                DerivedResultsPanel.Visibility = derivedRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
                 PointResultsPanel.Visibility = Visibility.Visible;
                 StatusText.Text =
                     $"Point query returned {result.SourceCount} source value(s) and {result.DerivedCount} derived/estimated value(s).";
@@ -86,6 +92,26 @@ namespace MarineEnvironment.Viewer
             {
                 _pointQueryInProgress = false;
             }
+        }
+
+        private static DerivedResultRow CreateSeabedGradeDerivedRow(SeabedGradeCell cell)
+        {
+            var sediment = cell.MudPercent.HasValue && cell.SandPercent.HasValue
+                ? string.Format(CultureInfo.InvariantCulture, "{0:0.#}/{1:0.#}",
+                    cell.MudPercent.Value, cell.SandPercent.Value)
+                : cell.Seabed;
+
+            return new DerivedResultRow
+            {
+                Model = SeabedGradeGridResult.ModelId,
+                Source = $"{cell.SourceId} (P{cell.SourcePriority})",
+                Basis = $"{cell.GradeBucket} | {cell.Terrain} | density {cell.ContactDensity}",
+                Classification = "SeabedGrade",
+                Seabed = cell.Grade ?? "NoData",
+                BurialRate = cell.BurialRatePercent.HasValue
+                    ? cell.BurialRatePercent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                    : sediment
+            };
         }
 
         private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)

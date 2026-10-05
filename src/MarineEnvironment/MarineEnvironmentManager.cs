@@ -24,6 +24,7 @@ namespace MarineEnvironment
         private readonly object _querySync = new object();
         private readonly Dictionary<string, IEnvironmentDataSource> _sources = new Dictionary<string, IEnvironmentDataSource>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, SeabedMappingLookup> _seabedMappings = new Dictionary<string, SeabedMappingLookup>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _sourcePriorities = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         private bool _disposed;
 
         public InitializationResult Initialize()
@@ -82,6 +83,7 @@ namespace MarineEnvironment
                     return false;
                 _sources.Remove(sourceId);
                 _seabedMappings.Remove(sourceId);
+                _sourcePriorities.Remove(sourceId);
                 source.Dispose();
                 ResetEstimatedSeabedCalibration();
                 return true;
@@ -477,6 +479,7 @@ namespace MarineEnvironment
             {
                 _sources.Remove(option.Id);
                 _seabedMappings.Remove(option.Id);
+                _sourcePriorities.Remove(option.Id);
                 existing.Dispose();
             }
 
@@ -512,6 +515,7 @@ namespace MarineEnvironment
             }
 
             _sources.Add(option.Id, source);
+            _sourcePriorities[option.Id] = option.Priority;
             if (mapping != null)
                 _seabedMappings[option.Id] = mapping;
             ResetEstimatedSeabedCalibration();
@@ -562,6 +566,7 @@ namespace MarineEnvironment
                 source.Dispose();
             _sources.Clear();
             _seabedMappings.Clear();
+            _sourcePriorities.Clear();
             ResetEstimatedSeabedCalibration();
         }
 
