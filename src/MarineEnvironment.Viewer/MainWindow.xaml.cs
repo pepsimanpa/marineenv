@@ -169,6 +169,48 @@ namespace MarineEnvironment.Viewer
         private static string? TryGetMetadataString(GridResult g,string key){if(g.Metadata==null||!g.Metadata.TryGetValue(key,out var value)||value==null)return null;return Convert.ToString(value,CultureInfo.InvariantCulture);}
         private static string FormatAngularSpacing(double arcSeconds){if(Math.Abs(arcSeconds-60.0)<0.01)return "1' (60\")";if(arcSeconds>=60)return $"{arcSeconds/60.0:0.###}' ({arcSeconds:0.###}\")";return $"{arcSeconds:0.###}\"";}
         private static BitmapSource CreateBitmap(GridResult g){if(g.Type==EnvironmentType.SeabedGrade)return CreateSeabedGradeBitmap(g);if(g.Type==EnvironmentType.Seabed)return CreateSeabedBitmap(g);var px=new byte[checked(g.Width*g.Height*4)];var min=g.Minimum??0;var max=g.Maximum??1;var range=Math.Abs(max-min)<1e-12?1:max-min;for(var i=0;i<g.Values.Length;i++){var o=i*4;var value=g.Values[i];if(!value.HasValue||double.IsNaN(value.Value)||double.IsInfinity(value.Value)){px[o]=245;px[o+1]=245;px[o+2]=245;px[o+3]=255;continue;}var t=Math.Max(0,Math.Min(1,(value.Value-min)/range));var rgb=TurboLike(t);px[o]=rgb.b;px[o+1]=rgb.g;px[o+2]=rgb.r;px[o+3]=255;}var bmp=BitmapSource.Create(g.Width,g.Height,96,96,PixelFormats.Bgra32,null,px,g.Width*4);bmp.Freeze();return bmp;}
+        private static BitmapSource CreateSeabedGradeBitmap(GridResult g)
+        {
+            var px = new byte[checked(g.Width * g.Height * 4)];
+            var palette = new (byte r, byte green, byte blue)[]
+            {
+                (198,239,206),(116,196,134),(48,140,70),
+                (255,244,178),(245,205,74),(194,151,16),
+                (255,210,153),(242,145,52),(190,88,20),
+                (255,190,190),(226,91,91),(166,38,38)
+            };
+            for (var i = 0; i < g.Values.Length; i++)
+            {
+                var o = i * 4;
+                var value = g.Values[i];
+                if (!value.HasValue)
+                {
+                    px[o] = px[o + 1] = px[o + 2] = 235;
+                    px[o + 3] = 255;
+                    continue;
+                }
+
+                var index = (int)Math.Round(value.Value) - 1;
+                if (index < 0 || index >= palette.Length)
+                {
+                    px[o] = px[o + 1] = px[o + 2] = 235;
+                    px[o + 3] = 255;
+                    continue;
+                }
+
+                var color = palette[index];
+                px[o] = color.blue;
+                px[o + 1] = color.green;
+                px[o + 2] = color.r;
+                px[o + 3] = 255;
+            }
+
+            var bmp = BitmapSource.Create(g.Width, g.Height, 96, 96,
+                PixelFormats.Bgra32, null, px, g.Width * 4);
+            bmp.Freeze();
+            return bmp;
+        }
+
         private static BitmapSource CreateSeabedBitmap(GridResult g)
         {
             var korea = string.Equals(TryGetMetadataString(g, "classificationScheme"),

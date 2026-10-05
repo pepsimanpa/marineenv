@@ -94,6 +94,26 @@ namespace MarineEnvironment.Viewer
             }
         }
 
+        private static DerivedResultRow CreateSeabedGradeDerivedRow(SeabedGradeCell cell)
+        {
+            var sediment = cell.MudPercent.HasValue && cell.SandPercent.HasValue
+                ? string.Format(CultureInfo.InvariantCulture, "{0:0.#}/{1:0.#}",
+                    cell.MudPercent.Value, cell.SandPercent.Value)
+                : cell.Seabed;
+
+            return new DerivedResultRow
+            {
+                Model = SeabedGradeGridResult.ModelId,
+                Source = $"{cell.SourceId} (P{cell.SourcePriority})",
+                Basis = $"{cell.GradeBucket} | {cell.Terrain} | density {cell.ContactDensity}",
+                Classification = "SeabedGrade",
+                Seabed = cell.Grade ?? "NoData",
+                BurialRate = cell.BurialRatePercent.HasValue
+                    ? cell.BurialRatePercent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                    : sediment
+            };
+        }
+
         private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)
         {
             if (value.Type == EnvironmentType.Turbidity && value.Value is double turbidity)
