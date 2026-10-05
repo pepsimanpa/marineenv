@@ -17,3 +17,5 @@ jobs:
         run: dotnet restore MarineEnvironment.sln
       - name: Build Solution
         run: dotnet build MarineEnvironment.sln --configuration Release --no-restore
+      - name: KHOA seasonal mean smoke tests
+        run: dotnet run --project tests/KhoaSeasonalSmoke/KhoaSeasonalSmoke.csproj --configuration Release --no-restore
