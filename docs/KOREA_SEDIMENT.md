@@ -64,9 +64,9 @@ rather than claiming a full three-component grain-size analysis.
 | sG | Sandy Gravel | 암반/자갈 | 암반 (n/a) | 0% |
 | msG | Muddy Sandy Gravel | 암반/자갈 | 암반 (n/a) | 0% |
 | mG | Muddy Gravel | 암반/자갈 | 암반 (n/a) | 0% |
-| S | Sand | 모래 | 뻘·모래 반반 (50/50) | 5% |
-| (g)S | Slightly Gravelly Sand | 모래 | 뻘·모래 반반 (50/50) | 5% |
-| gS | Gravelly Sand | 모래 | 뻘·모래 반반 (50/50) | 5% |
+| S | Sand | 모래 | 모래 (0/100) | 5% |
+| (g)S | Slightly Gravelly Sand | 모래 | 모래 (0/100) | 5% |
+| gS | Gravelly Sand | 모래 | 모래 (0/100) | 5% |
 | cS | Clayey Sand | 뻘·모래 혼합 | 뻘·모래 반반 (50/50) | 5% |
 | zS | Silty Sand | 뻘·모래 혼합 | 뻘·모래 반반 (50/50) | 5% |
 | mS | Muddy Sand | 뻘·모래 혼합 | 뻘·모래 반반 (50/50) | 5% |
@@ -82,12 +82,10 @@ rather than claiming a full three-component grain-size analysis.
 | sC | Sandy Clay | 뻘 | 뻘 (100/0) | 85% |
 | C | Clay | 뻘 | 뻘 (100/0) | 85% |
 
-The original Folk meaning may differ from operational grouping. The project-derived
-non-rock scale intentionally starts at 50/50, so even source classes such as
-`S`, `(g)S`, and `gS` retain their original sand classification while their
-operational output is 50/50. Likewise, `gmS` is sand-major by origin but is
-grouped into the same 50/50 operational category. Burial percentages are mapped
-by this project-specific table, not calculated from the fraction alone.
+The original Folk meaning may differ from operational grouping (e.g.
+`gmS` is sand-major by origin but grouped into the maximum permitted
+50/50 mixed category). Burial percentages are mapped by this
+project-specific table, not calculated from the fraction alone.
 
 ## Validation and caveats
 

@@ -17,6 +17,7 @@ namespace MarineEnvironment.Models
         BurialRate,
         ContactDensity,
         SeabedRoughness,
+        SeabedGrade,
         Unknown
     }
 
