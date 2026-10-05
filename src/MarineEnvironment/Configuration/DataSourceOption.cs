@@ -43,7 +43,8 @@ namespace MarineEnvironment.Configuration
 
         /// <summary>
         /// For SHOM worldwide sediment shapefiles, identifies the DBF field containing the
-        /// seabed nature code. The official product uses 'typelem'.
+        /// seabed nature code. The official product uses 'typelem'. The separately
+        /// configured Korean sediment source always uses its 'deposit' field.
         /// </summary>
         public string AttributeField { get; init; } = "typelem";
 
