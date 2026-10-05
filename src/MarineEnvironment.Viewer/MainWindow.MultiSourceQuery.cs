@@ -50,7 +50,13 @@ namespace MarineEnvironment.Viewer
                     DateTime = date
                 }));
 
-                var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToArray();
+                var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToList();
+                if (_currentSeabedGradeResult != null)
+                {
+                    var gradeCell = _currentSeabedGradeResult.GetCell(row, column);
+                    if (gradeCell.HasGrade)
+                        derivedRows.Insert(0, CreateSeabedGradeDerivedRow(gradeCell));
+                }
 
                 PointQueryText.Text =
                     $"Point API: {result.SourceCount} source / {result.DerivedCount} derived";
@@ -72,7 +78,7 @@ namespace MarineEnvironment.Viewer
                 }).ToArray();
 
                 DerivedResultsGrid.ItemsSource = derivedRows;
-                DerivedResultsPanel.Visibility = derivedRows.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+                DerivedResultsPanel.Visibility = derivedRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
                 PointResultsPanel.Visibility = Visibility.Visible;
                 StatusText.Text =
                     $"Point query returned {result.SourceCount} source value(s) and {result.DerivedCount} derived/estimated value(s).";

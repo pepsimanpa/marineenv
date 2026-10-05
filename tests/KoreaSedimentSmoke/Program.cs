@@ -57,7 +57,8 @@ namespace KoreaSedimentSmoke
                     Id = "KOREA_SMOKE",
                     Type = EnvironmentType.Seabed,
                     Format = DataSourceFormat.KoreaSediment,
-                    Path = koreaPath + ".shp"
+                    Path = koreaPath + ".shp",
+                    Priority = 10
                 });
                 Check(koreaState.Status == SourceStatus.Ready,
                     "Domestic source initialization: " + koreaState.Message);
@@ -120,7 +121,8 @@ namespace KoreaSedimentSmoke
                 const int overlapIndex = 10; // mS
                 var overlap = locations[overlapIndex];
                 var shomPath = Path.Combine(dir, "mock_shom");
-                WriteShapefile(shomPath, "typelem", new[] { "NFRoche" }, new[] { overlap });
+                var shomFallback = (X: 130.0, Y: 37.0);
+                WriteShapefile(shomPath, "typelem", new[] { "NFRoche", "NFRoche" }, new[] { overlap, shomFallback });
                 var shomMappingPath = Path.Combine(dir, "shom-mapping.json");
                 File.WriteAllText(shomMappingPath,
                     "{\"id\":\"SMOKE_SHOM\",\"rules\":[{\"shomCodes\":[\"NFRoche\"],"
@@ -132,7 +134,8 @@ namespace KoreaSedimentSmoke
                     Type = EnvironmentType.Seabed,
                     Format = DataSourceFormat.ShomSeabed,
                     Path = shomPath + ".shp",
-                    SeabedMappingPath = shomMappingPath
+                    SeabedMappingPath = shomMappingPath,
+                    Priority = 20
                 });
                 Check(shomState.Status == SourceStatus.Ready,
                     "SHOM mock source initialization: " + shomState.Message);
@@ -153,6 +156,63 @@ namespace KoreaSedimentSmoke
                 Check(both.DerivedValues.Any(x => x.SourceId == "SHOM_SMOKE"
                     && x.Value is SeabedDerivedValue s && s.BurialRatePercent == 0),
                     "Existing SHOM burial mapping missing or overridden");
+
+                // Seabed-grade API: Korean layer wins where both sources exist.
+                var gradeOverlap = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+                {
+                    MinLatitude = overlap.Y + 0.04,
+                    MaxLatitude = overlap.Y + 0.06,
+                    MinLongitude = overlap.X + 0.04,
+                    MaxLongitude = overlap.X + 0.06,
+                    Columns = 1,
+                    Rows = 1
+                }).GetCell(0, 0);
+                Check(gradeOverlap.SourceId == "KOREA_SMOKE",
+                    "Priority fallback should prefer Korean sediment over SHOM.");
+                Check(gradeOverlap.SourcePriority == 10, "Korean grade priority should be 10.");
+                Check(gradeOverlap.Grade == "A1", "Flat + density 1 + 50/50 should be A1.");
+
+                // User inputs apply uniformly to the analysis cells.
+                var gradeRough = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+                {
+                    MinLatitude = overlap.Y + 0.04,
+                    MaxLatitude = overlap.Y + 0.06,
+                    MinLongitude = overlap.X + 0.04,
+                    MaxLongitude = overlap.X + 0.06,
+                    Columns = 1,
+                    Rows = 1,
+                    ContactDensity = 3,
+                    Terrain = SeabedTerrain.Rough
+                }).GetCell(0, 0);
+                Check(gradeRough.Grade == "C3", "Rough + density 3 + 50/50 should be C3.");
+
+                // Outside domestic coverage, SHOM is used as the lower-priority fallback.
+                var gradeFallback = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+                {
+                    MinLatitude = shomFallback.Y + 0.04,
+                    MaxLatitude = shomFallback.Y + 0.06,
+                    MinLongitude = shomFallback.X + 0.04,
+                    MaxLongitude = shomFallback.X + 0.06,
+                    Columns = 1,
+                    Rows = 1
+                }).GetCell(0, 0);
+                Check(gradeFallback.SourceId == "SHOM_SMOKE",
+                    "SHOM should be used when the Korean layer has no polygon.");
+                Check(gradeFallback.SourcePriority == 20, "SHOM grade priority should be 20.");
+                Check(gradeFallback.Grade == "B1", "Flat + density 1 + rock should be B1.");
+
+                // Cell-size mode resolves dimensions inside the DLL.
+                var cellSizeGrid = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+                {
+                    MinLatitude = overlap.Y + 0.01,
+                    MaxLatitude = overlap.Y + 0.09,
+                    MinLongitude = overlap.X + 0.01,
+                    MaxLongitude = overlap.X + 0.09,
+                    GridMode = SeabedGradeGridMode.CellSizeKilometers,
+                    CellSizeKilometers = 100
+                });
+                Check(cellSizeGrid.Columns == 1 && cellSizeGrid.Rows == 1,
+                    "Large requested cell size should produce one analysis cell.");
 
                 var projected = Path.Combine(dir, "invalid-crs");
                 WriteShapefile(projected, "deposit", new[] { "R" }, new[] { (125.0, 34.0) });

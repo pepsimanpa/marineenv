@@ -51,6 +51,37 @@
                         <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Height"/><TextBox x:Name="GridHeightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="220" ToolTip="Used by Custom mode and vector/point-cloud display rasterization."/>
                     </Grid>
                     <Button x:Name="RenderButton" Margin="0,14,0,0" Padding="12,8" Click="Render_Click" FontWeight="SemiBold">Render Selected Source</Button>
+                    <Separator Margin="0,16,0,12" />
+                    <TextBlock Text="Seabed Grade" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock Text="Uses the view bounds above. Seabed layers are selected automatically by config priority (lower number first)." TextWrapping="Wrap" Foreground="#57606A" FontSize="11" Margin="0,0,0,8"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="105"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Grid Mode"/>
+                        <ComboBox x:Name="SeabedGradeGridModeComboBox" Grid.Row="0" Grid.Column="1" Margin="0,3" SelectedIndex="0" SelectionChanged="SeabedGradeGridMode_SelectionChanged">
+                            <ComboBoxItem Content="Cell Count"/>
+                            <ComboBoxItem Content="Cell Size (km)"/>
+                        </ComboBox>
+                        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Columns"/>
+                        <TextBox x:Name="SeabedGradeColumnsTextBox" Grid.Row="1" Grid.Column="1" Margin="0,3" Text="20"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Rows"/>
+                        <TextBox x:Name="SeabedGradeRowsTextBox" Grid.Row="2" Grid.Column="1" Margin="0,3" Text="10"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="Cell Size (km)"/>
+                        <TextBox x:Name="SeabedGradeCellSizeTextBox" Grid.Row="3" Grid.Column="1" Margin="0,3" Text="5" IsEnabled="False"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Contact Density"/>
+                        <ComboBox x:Name="ContactDensityComboBox" Grid.Row="4" Grid.Column="1" Margin="0,3" SelectedIndex="0">
+                            <ComboBoxItem Content="1"/>
+                            <ComboBoxItem Content="2"/>
+                            <ComboBoxItem Content="3"/>
+                        </ComboBox>
+                        <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="Terrain"/>
+                        <ComboBox x:Name="SeabedTerrainComboBox" Grid.Row="5" Grid.Column="1" Margin="0,3" SelectedIndex="0">
+                            <ComboBoxItem Content="Flat"/>
+                            <ComboBoxItem Content="Normal"/>
+                            <ComboBoxItem Content="Rough"/>
+                        </ComboBox>
+                    </Grid>
+                    <Button x:Name="CalculateSeabedGradeButton" Margin="0,12,0,0" Padding="12,8" Click="CalculateSeabedGrade_Click" FontWeight="SemiBold">Calculate Seabed Grade</Button>
                 </StackPanel></ScrollViewer>
             </Border>
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" />
@@ -68,6 +99,7 @@
                     <Border Grid.Row="1" Background="#F6F8FA" BorderBrush="#D8DEE4" BorderThickness="1" ClipToBounds="True">
                         <Grid x:Name="MapViewport" Background="Transparent" ClipToBounds="True" MouseWheel="MapViewport_MouseWheel" MouseLeftButtonDown="MapViewport_MouseLeftButtonDown" MouseLeftButtonUp="MapViewport_MouseLeftButtonUp" MouseMove="MapViewport_MouseMove" MouseLeave="MapViewport_MouseLeave" SizeChanged="MapViewport_SizeChanged">
                             <Image x:Name="MapImage" Stretch="Fill" SnapsToDevicePixels="True" IsHitTestVisible="False" RenderOptions.BitmapScalingMode="NearestNeighbor"><Image.RenderTransform><MatrixTransform x:Name="MapTransform"/></Image.RenderTransform></Image>
+                            <Canvas x:Name="GradeGridCanvas" IsHitTestVisible="False"><Canvas.RenderTransform><MatrixTransform x:Name="GradeGridTransform"/></Canvas.RenderTransform></Canvas>
                             <Canvas x:Name="CurrentVectorCanvas" IsHitTestVisible="False"><Canvas.RenderTransform><MatrixTransform x:Name="CurrentVectorTransform"/></Canvas.RenderTransform></Canvas>
                             <TextBlock x:Name="EmptyMapText" Text="Load a configuration and render a READY source." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#6E7781" FontSize="15" IsHitTestVisible="False"/>
                             <Border x:Name="ScaleBarPanel" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14" Padding="7,5" Background="#DFFFFFFF" BorderBrush="#55000000" BorderThickness="1" CornerRadius="3" Visibility="Collapsed" IsHitTestVisible="False"><StackPanel><TextBlock x:Name="ScaleBarText" Text="-" FontSize="11" FontWeight="SemiBold" Foreground="#111111" HorizontalAlignment="Center" Margin="0,0,0,2"/><Border x:Name="ScaleBarLine" Width="100" Height="7" BorderBrush="#111111" BorderThickness="1,0,1,2"/></StackPanel></Border>
