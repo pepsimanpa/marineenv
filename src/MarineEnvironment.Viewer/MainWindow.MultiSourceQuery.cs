@@ -130,6 +130,20 @@ namespace MarineEnvironment.Viewer
                 yield break;
             }
 
+            if (value.Value is KoreaSedimentDerivedValue korea)
+            {
+                yield return new DerivedResultRow
+                {
+                    Model = korea.MappingTableId,
+                    Source = value.SourceId,
+                    Basis = $"{korea.OriginalCode}: {korea.OriginalClassification} → {korea.PrimaryClassification}",
+                    Classification = korea.PrimaryClassification,
+                    Seabed = korea.SeabedDisplay,
+                    BurialRate = korea.BurialRatePercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                };
+                yield break;
+            }
+
             if (value.Value is EstimatedSeabedValue estimated)
             {
                 yield return new DerivedResultRow

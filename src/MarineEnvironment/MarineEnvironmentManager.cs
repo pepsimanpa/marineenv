@@ -9,6 +9,7 @@ using MarineEnvironment.Sources.Bada;
 using MarineEnvironment.Sources.Fes2014;
 using MarineEnvironment.Sources.Goci2;
 using MarineEnvironment.Sources.Khoa;
+using MarineEnvironment.Sources.Korea;
 using MarineEnvironment.Sources.Kodc;
 using MarineEnvironment.Sources.NetCdf;
 using MarineEnvironment.Sources.Shom;
@@ -211,6 +212,7 @@ namespace MarineEnvironment
             ICollection<EnvironmentValue> derivedValues)
         {
             AppendSeabedMappingDerivedValue(sourceValue, mappings, derivedValues);
+            AppendKoreaSedimentDerivedValue(sourceValue, derivedValues);
             AppendGoci2TurbidityDerivedValue(sourceValue, derivedValues);
         }
 
@@ -262,6 +264,49 @@ namespace MarineEnvironment
                 sourceValue.Depth,
                 sourceValue.DateTime,
                 "DerivedSeabedMapping",
+                metadata));
+        }
+
+        /// <summary>
+        /// Korean operational sediment classification stays separate from SHOM's
+        /// independently configured mapping table and raw SeabedValue.
+        /// </summary>
+        private static void AppendKoreaSedimentDerivedValue(
+            EnvironmentValue sourceValue, ICollection<EnvironmentValue> derivedValues)
+        {
+            if (!(sourceValue.Value is KoreaSedimentValue korea))
+                return;
+            if (!KoreaSedimentCatalog.TryGet(korea.Code, out var definition))
+                return;
+
+            var derived = definition.ToDerived();
+            var metadata = new Dictionary<string, object?>
+            {
+                ["dataKind"] = "Derived",
+                ["observed"] = false,
+                ["sourceId"] = sourceValue.SourceId,
+                ["sourceVariable"] = sourceValue.Variable,
+                ["model"] = derived.MappingTableId,
+                ["depositOriginalCode"] = derived.OriginalCode,
+                ["depositOriginalClassification"] = derived.OriginalClassification,
+                ["primaryClassification"] = derived.PrimaryClassification,
+                ["seabed"] = derived.Seabed,
+                ["mudPercent"] = derived.MudPercent,
+                ["sandPercent"] = derived.SandPercent,
+                ["burialRatePercent"] = derived.BurialRatePercent,
+                ["interpretation"] = "Project-defined representative sediment ratios and burial-rate mapping, not measured values"
+            };
+
+            derivedValues.Add(new EnvironmentValue(
+                sourceValue.SourceId,
+                EnvironmentType.Seabed,
+                derived,
+                null,
+                sourceValue.Latitude,
+                sourceValue.Longitude,
+                null,
+                null,
+                "DerivedKoreaDepositMapping",
                 metadata));
         }
 
@@ -414,6 +459,8 @@ namespace MarineEnvironment
                 throw new ArgumentException($"FES2014 current source '{option.Id}' must use type Current.", nameof(option));
             if (option.Format == DataSourceFormat.KhoaDailyCurrentCsv && option.Type != EnvironmentType.Current)
                 throw new ArgumentException($"KHOA daily-current CSV source '{option.Id}' must use type Current.", nameof(option));
+            if (option.Format == DataSourceFormat.KoreaSediment && option.Type != EnvironmentType.Seabed)
+                throw new ArgumentException($"Korean sediment source '{option.Id}' must use type Seabed.", nameof(option));
             if (option.Format == DataSourceFormat.ShomSeabed && option.Type != EnvironmentType.Seabed)
                 throw new ArgumentException($"SHOM seabed source '{option.Id}' must use type Seabed.", nameof(option));
             if (option.Format == DataSourceFormat.Goci2Tss
@@ -453,6 +500,9 @@ namespace MarineEnvironment
                     break;
                 case DataSourceFormat.ShomSeabed:
                     source = new ShomSeabedDataSource(option, resolvedPath);
+                    break;
+                case DataSourceFormat.KoreaSediment:
+                    source = new KoreaSedimentDataSource(option, resolvedPath);
                     break;
                 case DataSourceFormat.Goci2Tss:
                     source = new Goci2TssAggregateDataSource(option, resolvedPath);

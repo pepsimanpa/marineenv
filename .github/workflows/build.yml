@@ -19,3 +19,5 @@ jobs:
         run: dotnet build MarineEnvironment.sln --configuration Release --no-restore
       - name: KHOA seasonal mean smoke tests
         run: dotnet run --project tests/KhoaSeasonalSmoke/KhoaSeasonalSmoke.csproj --configuration Release --no-restore
+      - name: Korea sediment mapping and shapefile integration tests
+        run: dotnet run --project tests/KoreaSedimentSmoke/KoreaSedimentSmoke.csproj --configuration Release
