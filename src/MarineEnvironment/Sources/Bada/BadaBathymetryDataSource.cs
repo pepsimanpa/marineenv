@@ -100,7 +100,6 @@ namespace MarineEnvironment.Sources.Bada
             var metadata = CreateMetadata(index);
             metadata["sourceIndex"] = sample.SourceIndex;
             metadata["nearestDistanceKm"] = sample.DistanceKm;
-            metadata["verticalReference"] = "MSL";
             metadata["sourceGeometry"] = "IrregularPointCloud";
             metadata["sourcePointCount"] = index.Count;
 
@@ -193,7 +192,7 @@ namespace MarineEnvironment.Sources.Bada
             metadata["requestedResolutionMode"] = query.ResolutionMode.ToString();
             metadata["displayRasterWidth"] = width;
             metadata["displayRasterHeight"] = height;
-            metadata["verticalReference"] = "MSL";
+            if (!metadata.ContainsKey("verticalReference")) metadata["verticalReference"] = "MSL";
             metadata["requestedBounds"] = new[]
             {
                 query.MinLatitude,
@@ -498,6 +497,12 @@ namespace MarineEnvironment.Sources.Bada
             metadata["sourceLatitudeVariable"] = _option.LatitudeVariable;
             metadata["sourceLongitudeVariable"] = _option.LongitudeVariable;
             metadata["sourceDepthVariable"] = _option.Variable;
+            if (_option.VerticalConvention != VerticalConvention.Unspecified)
+                metadata["verticalConvention"] = _option.VerticalConvention.ToString();
+            if (!string.IsNullOrWhiteSpace(_option.VerticalReference))
+                metadata["verticalReference"] = _option.VerticalReference;
+            else
+                metadata["verticalReference"] = "MSL"; // BADA product default
             metadata["spatialBinSizeDegrees"] = index.BinSizeDegrees;
             metadata["maxNearestDistanceKm"] = _maxNearestDistanceKm;
             return metadata;

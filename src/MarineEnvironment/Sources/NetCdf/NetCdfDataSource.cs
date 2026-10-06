@@ -244,6 +244,10 @@ namespace MarineEnvironment.Sources.NetCdf
                 : new Dictionary<string, object?>();
             metadata["file"] = filePath;
             metadata["sampling"] = sampling;
+            if (_option.VerticalConvention != VerticalConvention.Unspecified)
+                metadata["verticalConvention"] = _option.VerticalConvention.ToString();
+            if (!string.IsNullOrWhiteSpace(_option.VerticalReference))
+                metadata["verticalReference"] = _option.VerticalReference;
             return metadata;
         }
 

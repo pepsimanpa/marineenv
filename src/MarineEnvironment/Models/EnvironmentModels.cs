@@ -51,6 +51,21 @@ namespace MarineEnvironment.Models
         Error
     }
 
+    /// <summary>
+    /// Describes the sign convention of a source-native vertical value.
+    /// MarineEnvironment preserves the source numeric value; this metadata tells
+    /// callers how to interpret its sign.
+    /// </summary>
+    public enum VerticalConvention
+    {
+        /// <summary>No convention was declared in configuration.</summary>
+        Unspecified,
+        /// <summary>Elevation/relief: positive upward, so seabed is normally negative.</summary>
+        ElevationPositiveUp,
+        /// <summary>Depth: positive downward, so water depth is normally positive.</summary>
+        DepthPositiveDown
+    }
+
     public enum SpatialSampling
     {
         Nearest
