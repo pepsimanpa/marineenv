@@ -27,13 +27,14 @@ def get_config_path() -> str:
     )
 
 
-JINHAE_LAT = 35.10
-JINHAE_LON = 128.70
+JINHAE_LAT = 34.85
+JINHAE_LON = 129.00
 
-# 진해만 부근 약 20 km x 20 km 학습/검증용 근사 범위.
+# 진해만보다 남쪽의 열린 남해 해역 약 20 km x 20 km 학습/검증용 근사 범위.
+# 해안선/육지 셀이 과도하게 포함되지 않도록 기존 범위보다 남동쪽으로 이동했다.
 JINHAE_20KM = {
-    "min_latitude": 35.01,
-    "max_latitude": 35.19,
-    "min_longitude": 128.59,
-    "max_longitude": 128.81,
+    "min_latitude": 34.76,
+    "max_latitude": 34.94,
+    "min_longitude": 128.89,
+    "max_longitude": 129.11,
 }
