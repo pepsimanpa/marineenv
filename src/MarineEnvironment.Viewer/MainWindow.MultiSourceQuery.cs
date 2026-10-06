@@ -51,11 +51,10 @@ namespace MarineEnvironment.Viewer
                 }));
 
                 var derivedRows = result.DerivedValues.SelectMany(CreateDerivedRows).ToList();
-                if (_currentSeabedGradeResult != null)
+                if (TryGetSeabedGradeCellAtGeo(latitude, longitude, out var gradeCell)
+                    && gradeCell.HasGrade)
                 {
-                    var gradeCell = _currentSeabedGradeResult.GetCell(row, column);
-                    if (gradeCell.HasGrade)
-                        derivedRows.Insert(0, CreateSeabedGradeDerivedRow(gradeCell));
+                    derivedRows.Insert(0, CreateSeabedGradeDerivedRow(gradeCell));
                 }
 
                 PointQueryText.Text =

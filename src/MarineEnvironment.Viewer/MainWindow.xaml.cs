@@ -25,7 +25,7 @@ namespace MarineEnvironment.Viewer
         private void BrowseConfig_Click(object s,RoutedEventArgs e){var d=new OpenFileDialog{Filter="MarineEnvironment config (*.json)|*.json|All files (*.*)|*.*",CheckFileExists=true};if(d.ShowDialog(this)==true)ConfigPathTextBox.Text=d.FileName;}
         private void LoadConfig_Click(object s,RoutedEventArgs e){try{var p=ConfigPathTextBox.Text.Trim();if(string.IsNullOrWhiteSpace(p)){MessageBox.Show(this,"Select marineenvironment.json first.");return;}var r=_manager.Initialize(p);SourceListBox.ItemsSource=r.Sources;SourceListBox.SelectedItem=r.Sources.FirstOrDefault(x=>x.Status==SourceStatus.Ready)??r.Sources.FirstOrDefault();StatusText.Text=$"Configuration loaded. {r.Sources.Count} source(s), {r.Sources.Count(x=>x.Status==SourceStatus.Ready)} READY.";}catch(Exception ex){MessageBox.Show(this,ex.Message,"Configuration error",MessageBoxButton.OK,MessageBoxImage.Error);}}
         private void SourceListBox_SelectionChanged(object s,SelectionChangedEventArgs e){_selectedSource=SourceListBox.SelectedItem as SourceState;if(_selectedSource==null){SelectedSourceStatusText.Text="";return;}var pointCloud=!string.IsNullOrWhiteSpace(_selectedSource.Message)&&(_selectedSource.Message.IndexOf("daily vector points",StringComparison.OrdinalIgnoreCase)>=0||_selectedSource.Message.IndexOf("paired bathymetry points",StringComparison.OrdinalIgnoreCase)>=0);var resolutionNote=_selectedSource.Type==EnvironmentType.Seabed?"\nResolution: vector polygons; Width/Height controls display rasterization.":pointCloud?"\nResolution: irregular source points; Width/Height controls display rasterization.":"\nResolution: Source Native is the default render mode for gridded sources.";SelectedSourceStatusText.Text=$"{_selectedSource.Type} / {_selectedSource.Status}"+(string.IsNullOrWhiteSpace(_selectedSource.Message)?"":$"\n{_selectedSource.Message}")+resolutionNote;}
-        private async void Render_Click(object s,RoutedEventArgs e){if(_selectedSource==null||_selectedSource.Status!=SourceStatus.Ready){MessageBox.Show(this,"Select a READY source first.");return;}if(!TryReadDouble(MinLatTextBox,out var a)||!TryReadDouble(MaxLatTextBox,out var b)||!TryReadDouble(MinLonTextBox,out var c)||!TryReadDouble(MaxLonTextBox,out var d)||!TryReadInt(GridWidthTextBox,out var w)||!TryReadInt(GridHeightTextBox,out var h)){MessageBox.Show(this,"Check view bounds and custom/display raster size.");return;}double? depth=null;if(!string.IsNullOrWhiteSpace(DepthTextBox.Text)){if(!TryReadDouble(DepthTextBox,out var dp)){MessageBox.Show(this,"Depth must be numeric or blank.");return;}depth=dp;}var resolutionMode=RenderResolutionComboBox.SelectedIndex==0?GridResolutionMode.SourceNative:GridResolutionMode.Custom;var q=new GridQuery{MinLatitude=a,MaxLatitude=b,MinLongitude=c,MaxLongitude=d,Depth=depth,DateTime=GetSelectedQueryDate(),Width=w,Height=h,ResolutionMode=resolutionMode};try{RenderButton.IsEnabled=false;Mouse.OverrideCursor=Cursors.Wait;var g=await Task.Run(()=>_manager.QueryGrid(_selectedSource.Id,q));if(g.Width<1||g.Height<1)throw new InvalidOperationException("The requested view does not intersect any renderable source cells.");_currentSeabedGradeResult=null;GradeGridCanvas.Children.Clear();_currentGrid=g;MapImage.Source=CreateBitmap(g);DrawCurrentVectors(g);EmptyMapText.Visibility=Visibility.Collapsed;MapTitleText.Text=$"{g.SourceId} / {g.Type}";RangeText.Text=g.Type==EnvironmentType.Seabed?(string.Equals(TryGetMetadataString(g,"classificationScheme"),"KoreaDeposit",StringComparison.Ordinal)?"Korea deposit / project classification colors":"SHOM categorical sediment / official legend colors"):!g.Minimum.HasValue||!g.Maximum.HasValue?"No valid values":$"Min {FormatValue(g.Minimum)} | Max {FormatValue(g.Maximum)} {g.Unit}";ResolutionText.Text=BuildResolutionText(g,resolutionMode);PointResultsPanel.Visibility=Visibility.Collapsed;ResetMapTransform();ScaleBarPanel.Visibility=Visibility.Visible;UpdateScaleBar();StatusText.Text=$"Rendered {g.Width} x {g.Height} samples ({EffectiveResolutionMode(g,resolutionMode)}) for {q.DateTime:yyyy-MM-dd}.";}catch(Exception ex){MessageBox.Show(this,ex.ToString(),"Render error",MessageBoxButton.OK,MessageBoxImage.Error);}finally{Mouse.OverrideCursor=null;RenderButton.IsEnabled=true;}}
+        private async void Render_Click(object s,RoutedEventArgs e){if(_selectedSource==null||_selectedSource.Status!=SourceStatus.Ready){MessageBox.Show(this,"Select a READY source first.");return;}if(!TryReadDouble(MinLatTextBox,out var a)||!TryReadDouble(MaxLatTextBox,out var b)||!TryReadDouble(MinLonTextBox,out var c)||!TryReadDouble(MaxLonTextBox,out var d)||!TryReadInt(GridWidthTextBox,out var w)||!TryReadInt(GridHeightTextBox,out var h)){MessageBox.Show(this,"Check view bounds and custom/display raster size.");return;}double? depth=null;if(!string.IsNullOrWhiteSpace(DepthTextBox.Text)){if(!TryReadDouble(DepthTextBox,out var dp)){MessageBox.Show(this,"Depth must be numeric or blank.");return;}depth=dp;}var resolutionMode=RenderResolutionComboBox.SelectedIndex==0?GridResolutionMode.SourceNative:GridResolutionMode.Custom;var q=new GridQuery{MinLatitude=a,MaxLatitude=b,MinLongitude=c,MaxLongitude=d,Depth=depth,DateTime=GetSelectedQueryDate(),Width=w,Height=h,ResolutionMode=resolutionMode};try{RenderButton.IsEnabled=false;Mouse.OverrideCursor=Cursors.Wait;var g=await Task.Run(()=>_manager.QueryGrid(_selectedSource.Id,q));if(g.Width<1||g.Height<1)throw new InvalidOperationException("The requested view does not intersect any renderable source cells.");_currentSeabedGradeResult=null;GradeGridCanvas.Children.Clear();ResetSeabedGradeAreaForNewMap();_currentGrid=g;MapImage.Source=CreateBitmap(g);DrawCurrentVectors(g);EmptyMapText.Visibility=Visibility.Collapsed;MapTitleText.Text=$"{g.SourceId} / {g.Type}";RangeText.Text=g.Type==EnvironmentType.Seabed?(string.Equals(TryGetMetadataString(g,"classificationScheme"),"KoreaDeposit",StringComparison.Ordinal)?"Korea deposit / project classification colors":"SHOM categorical sediment / official legend colors"):!g.Minimum.HasValue||!g.Maximum.HasValue?"No valid values":$"Min {FormatValue(g.Minimum)} | Max {FormatValue(g.Maximum)} {g.Unit}";ResolutionText.Text=BuildResolutionText(g,resolutionMode);PointResultsPanel.Visibility=Visibility.Collapsed;ResetMapTransform();ScaleBarPanel.Visibility=Visibility.Visible;UpdateScaleBar();StatusText.Text=$"Rendered {g.Width} x {g.Height} samples ({EffectiveResolutionMode(g,resolutionMode)}) for {q.DateTime:yyyy-MM-dd}.";}catch(Exception ex){MessageBox.Show(this,ex.ToString(),"Render error",MessageBoxButton.OK,MessageBoxImage.Error);}finally{Mouse.OverrideCursor=null;RenderButton.IsEnabled=true;}}
         private void SeabedGradeGridMode_SelectionChanged(object s, SelectionChangedEventArgs e)
         {
             if (SeabedGradeColumnsTextBox == null || SeabedGradeRowsTextBox == null || SeabedGradeCellSizeTextBox == null)
@@ -38,12 +38,15 @@ namespace MarineEnvironment.Viewer
 
         private async void CalculateSeabedGrade_Click(object s, RoutedEventArgs e)
         {
-            if (!TryReadDouble(MinLatTextBox, out var minLat)
-                || !TryReadDouble(MaxLatTextBox, out var maxLat)
-                || !TryReadDouble(MinLonTextBox, out var minLon)
-                || !TryReadDouble(MaxLonTextBox, out var maxLon))
+            if (_currentGrid == null)
             {
-                MessageBox.Show(this, "Check view bounds.");
+                MessageBox.Show(this, "Render a source first, then select the seabed-grade analysis area on the map.");
+                return;
+            }
+
+            if (!TryReadSeabedGradeBounds(out var minLat, out var maxLat, out var minLon, out var maxLon))
+            {
+                MessageBox.Show(this, "Select an analysis area on the map, or enter valid Seabed Grade Min/Max coordinates.");
                 return;
             }
 
@@ -96,24 +99,18 @@ namespace MarineEnvironment.Viewer
                 CalculateSeabedGradeButton.IsEnabled = false;
                 Mouse.OverrideCursor = Cursors.Wait;
                 var result = await Task.Run(() => _manager.QuerySeabedGradeGrid(query));
-                var grid = result.ToGridResult();
 
                 _currentSeabedGradeResult = result;
-                _currentGrid = grid;
-                MapImage.Source = CreateBitmap(grid);
-                DrawCurrentVectors(grid);
-                DrawSeabedGradeGridLines(result);
+                DrawSeabedGradeOverlay(result);
+                DrawSeabedGradeSelection();
                 EmptyMapText.Visibility = Visibility.Collapsed;
-                MapTitleText.Text = $"Seabed Grade / {result.Columns} x {result.Rows}";
-                RangeText.Text = $"Grade cells {result.GradeCount} | NoData {result.NoDataCount} | Density {result.ContactDensity} | Terrain {result.Terrain}";
+                MapTitleText.Text = $"{_currentGrid.SourceId} / {_currentGrid.Type} + Seabed Grade";
+                RangeText.Text = $"Selected area grade cells {result.GradeCount} | NoData {result.NoDataCount} | Density {result.ContactDensity} | Terrain {result.Terrain}";
                 ResolutionText.Text = result.GridMode == SeabedGradeGridMode.CellCount
-                    ? $"Analysis cells {result.Columns} x {result.Rows} | source fallback by config priority"
-                    : $"Requested cell size {result.RequestedCellSizeKilometers:0.###} km → {result.Columns} x {result.Rows} | source fallback by config priority";
+                    ? $"Selected area {result.MinLatitude:0.#####}..{result.MaxLatitude:0.#####}, {result.MinLongitude:0.#####}..{result.MaxLongitude:0.#####} | Analysis cells {result.Columns} x {result.Rows} | source fallback by config priority"
+                    : $"Selected area | Requested cell size {result.RequestedCellSizeKilometers:0.###} km → {result.Columns} x {result.Rows} | source fallback by config priority";
                 PointResultsPanel.Visibility = Visibility.Collapsed;
-                ResetMapTransform();
-                ScaleBarPanel.Visibility = Visibility.Visible;
-                UpdateScaleBar();
-                StatusText.Text = $"Calculated {result.GradeCount} seabed grade cell(s); {result.NoDataCount} NoData.";
+                StatusText.Text = $"Calculated seabed grade only inside the selected area: {result.GradeCount} grade cell(s), {result.NoDataCount} NoData.";
             }
             catch (Exception ex)
             {
@@ -128,36 +125,107 @@ namespace MarineEnvironment.Viewer
 
         private void DrawSeabedGradeGridLines(SeabedGradeGridResult result)
         {
-            GradeGridCanvas.Children.Clear();
-            if (MapViewport.ActualWidth <= 0 || MapViewport.ActualHeight <= 0)
-                return;
-            if (result.Columns + result.Rows > 400)
-                return;
-
-            var brush = new SolidColorBrush(Color.FromArgb(120, 255, 255, 255));
-            brush.Freeze();
-            var width = MapViewport.ActualWidth;
-            var height = MapViewport.ActualHeight;
-            for (var c = 1; c < result.Columns; c++)
-            {
-                var x = width * c / result.Columns;
-                GradeGridCanvas.Children.Add(new Line { X1 = x, X2 = x, Y1 = 0, Y2 = height, Stroke = brush, StrokeThickness = 0.7 });
-            }
-            for (var r = 1; r < result.Rows; r++)
-            {
-                var y = height * r / result.Rows;
-                GradeGridCanvas.Children.Add(new Line { X1 = 0, X2 = width, Y1 = y, Y2 = y, Stroke = brush, StrokeThickness = 0.7 });
-            }
+            DrawSeabedGradeOverlay(result);
         }
 
         private void ZoomIn_Click(object s,RoutedEventArgs e)=>ZoomAt(new Point(MapViewport.ActualWidth/2,MapViewport.ActualHeight/2),ZoomStep); private void ZoomOut_Click(object s,RoutedEventArgs e)=>ZoomAt(new Point(MapViewport.ActualWidth/2,MapViewport.ActualHeight/2),1/ZoomStep); private void ResetZoom_Click(object s,RoutedEventArgs e)=>ResetMapTransform();
         private void MapViewport_MouseWheel(object s,MouseWheelEventArgs e){if(_currentGrid==null)return;ZoomAt(e.GetPosition(MapViewport),e.Delta>0?ZoomStep:1/ZoomStep);e.Handled=true;}
-        private void MapViewport_MouseLeftButtonDown(object s,MouseButtonEventArgs e){if(_currentGrid==null)return;_isPanning=true;_dragMoved=false;_panStart=e.GetPosition(MapViewport);_panOrigin=new Point(_panX,_panY);MapViewport.CaptureMouse();MapViewport.Cursor=Cursors.SizeAll;e.Handled=true;}
-        private async void MapViewport_MouseLeftButtonUp(object s,MouseButtonEventArgs e){if(!_isPanning)return;var p=e.GetPosition(MapViewport);_isPanning=false;MapViewport.ReleaseMouseCapture();MapViewport.Cursor=Cursors.Arrow;if(!_dragMoved)await QueryAllSourcesAtViewportPosition(p);e.Handled=true;}
-        private void MapViewport_MouseMove(object s,MouseEventArgs e){if(_currentGrid==null)return;var p=e.GetPosition(MapViewport);if(_isPanning&&e.LeftButton==MouseButtonState.Pressed){var delta=p-_panStart;if(Math.Abs(delta.X)>2||Math.Abs(delta.Y)>2)_dragMoved=true;_panX=_panOrigin.X+delta.X;_panY=_panOrigin.Y+delta.Y;ClampPan();ApplyMapTransform();return;}if(TryGetRasterCellFromViewport(p,out var r,out var c)){var label=_currentGrid.GetLabel(r,c);var direction=_currentGrid.GetDirection(r,c);var vector=direction.HasValue?$" @ {direction.Value:0.#}°":string.Empty;var value=label??($"{FormatValue(_currentGrid.GetValue(r,c))} {_currentGrid.Unit}{vector}".Trim());CursorInfoText.Text=$"Lat: {_currentGrid.Latitudes[r]:0.#####} Lon: {_currentGrid.Longitudes[c]:0.#####} Value: {value}";}else CursorInfoText.Text="Lat: - Lon: - Value: -";}
-        private void MapViewport_MouseLeave(object s,MouseEventArgs e){if(!_isPanning)CursorInfoText.Text="Lat: - Lon: - Value: -";} private void MapViewport_SizeChanged(object s,SizeChangedEventArgs e){if(_currentGrid==null)return;DrawCurrentVectors(_currentGrid);if(_currentSeabedGradeResult!=null)DrawSeabedGradeGridLines(_currentSeabedGradeResult);ClampPan();ApplyMapTransform();UpdateScaleBar();}
+        private void MapViewport_MouseLeftButtonDown(object s, MouseButtonEventArgs e)
+        {
+            if (_currentGrid == null) return;
+            var p = e.GetPosition(MapViewport);
+            if (BeginSeabedGradeAreaSelection(p))
+            {
+                MapViewport.CaptureMouse();
+                e.Handled = true;
+                return;
+            }
+
+            _isPanning = true;
+            _dragMoved = false;
+            _panStart = p;
+            _panOrigin = new Point(_panX, _panY);
+            MapViewport.CaptureMouse();
+            MapViewport.Cursor = Cursors.SizeAll;
+            e.Handled = true;
+        }
+
+        private async void MapViewport_MouseLeftButtonUp(object s, MouseButtonEventArgs e)
+        {
+            var p = e.GetPosition(MapViewport);
+            if (CompleteSeabedGradeAreaSelection(p))
+            {
+                if (MapViewport.IsMouseCaptured)
+                    MapViewport.ReleaseMouseCapture();
+                MapViewport.Cursor = Cursors.Arrow;
+                e.Handled = true;
+                return;
+            }
+
+            if (!_isPanning) return;
+            _isPanning = false;
+            MapViewport.ReleaseMouseCapture();
+            MapViewport.Cursor = Cursors.Arrow;
+            if (!_dragMoved)
+                await QueryAllSourcesAtViewportPosition(p);
+            e.Handled = true;
+        }
+
+        private void MapViewport_MouseMove(object s, MouseEventArgs e)
+        {
+            if (_currentGrid == null) return;
+            var p = e.GetPosition(MapViewport);
+
+            if (UpdateSeabedGradeAreaSelection(p, e.LeftButton))
+                return;
+
+            if (_isPanning && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var delta = p - _panStart;
+                if (Math.Abs(delta.X) > 2 || Math.Abs(delta.Y) > 2) _dragMoved = true;
+                _panX = _panOrigin.X + delta.X;
+                _panY = _panOrigin.Y + delta.Y;
+                ClampPan();
+                ApplyMapTransform();
+                return;
+            }
+
+            if (TryGetRasterCellFromViewport(p, out var r, out var c))
+            {
+                var latitude = _currentGrid.Latitudes[r];
+                var longitude = _currentGrid.Longitudes[c];
+                if (TryViewportToGeo(p, out var exactLat, out var exactLon)
+                    && TryGetSeabedGradeCellAtGeo(exactLat, exactLon, out var gradeCell))
+                {
+                    var source = gradeCell.HasGrade
+                        ? $"{gradeCell.SourceId} P{gradeCell.SourcePriority}"
+                        : "NoData";
+                    CursorInfoText.Text =
+                        $"Lat: {exactLat:0.#####} Lon: {exactLon:0.#####} Grade: {gradeCell.Grade ?? "NoData"} | {source}";
+                    return;
+                }
+
+                var label = _currentGrid.GetLabel(r, c);
+                var direction = _currentGrid.GetDirection(r, c);
+                var vector = direction.HasValue ? $" @ {direction.Value:0.#}°" : string.Empty;
+                var value = label ?? ($"{FormatValue(_currentGrid.GetValue(r, c))} {_currentGrid.Unit}{vector}".Trim());
+                CursorInfoText.Text = $"Lat: {latitude:0.#####} Lon: {longitude:0.#####} Value: {value}";
+            }
+            else
+            {
+                CursorInfoText.Text = "Lat: - Lon: - Value: -";
+            }
+        }
+
+        private void MapViewport_MouseLeave(object s, MouseEventArgs e)
+        {
+            if (!_isPanning && !IsSeabedGradeAreaDragActive)
+                CursorInfoText.Text = "Lat: - Lon: - Value: -";
+        }
+
+        private void MapViewport_SizeChanged(object s,SizeChangedEventArgs e){if(_currentGrid==null)return;DrawCurrentVectors(_currentGrid);if(_currentSeabedGradeResult!=null)DrawSeabedGradeOverlay(_currentSeabedGradeResult);DrawSeabedGradeSelection();ClampPan();ApplyMapTransform();UpdateScaleBar();}
         private void ZoomAt(Point p,double f){if(_currentGrid==null)return;var old=_zoom;var nz=Math.Max(MinZoom,Math.Min(MaxZoom,old*f));if(Math.Abs(nz-old)<1e-12)return;var ix=(p.X-_panX)/old;var iy=(p.Y-_panY)/old;_zoom=nz;_panX=p.X-ix*nz;_panY=p.Y-iy*nz;ClampPan();ApplyMapTransform();UpdateScaleBar();} private void ResetMapTransform(){_zoom=1;_panX=_panY=0;ApplyMapTransform();UpdateScaleBar();}
-        private void ClampPan(){var w=MapViewport.ActualWidth;var h=MapViewport.ActualHeight;if(w<=0||h<=0)return;if(_zoom<=1){_panX=_panY=0;return;}_panX=Math.Max(w-w*_zoom,Math.Min(0,_panX));_panY=Math.Max(h-h*_zoom,Math.Min(0,_panY));} private void ApplyMapTransform(){var matrix=new Matrix(_zoom,0,0,_zoom,_panX,_panY);MapTransform.Matrix=matrix;CurrentVectorTransform.Matrix=matrix;GradeGridTransform.Matrix=matrix;ZoomText.Text=$"{_zoom*100:0}%";}
+        private void ClampPan(){var w=MapViewport.ActualWidth;var h=MapViewport.ActualHeight;if(w<=0||h<=0)return;if(_zoom<=1){_panX=_panY=0;return;}_panX=Math.Max(w-w*_zoom,Math.Min(0,_panX));_panY=Math.Max(h-h*_zoom,Math.Min(0,_panY));} private void ApplyMapTransform(){var matrix=new Matrix(_zoom,0,0,_zoom,_panX,_panY);MapTransform.Matrix=matrix;CurrentVectorTransform.Matrix=matrix;GradeGridTransform.Matrix=matrix;GradeSelectionTransform.Matrix=matrix;ZoomText.Text=$"{_zoom*100:0}%";}
         private bool TryGetRasterCellFromViewport(Point p,out int row,out int col){row=col=0;if(_currentGrid==null||MapViewport.ActualWidth<=0||MapViewport.ActualHeight<=0)return false;var x=(p.X-_panX)/_zoom;var y=(p.Y-_panY)/_zoom;if(x<0||y<0||x>=MapViewport.ActualWidth||y>=MapViewport.ActualHeight)return false;col=Math.Max(0,Math.Min(_currentGrid.Width-1,(int)(x/MapViewport.ActualWidth*_currentGrid.Width)));row=Math.Max(0,Math.Min(_currentGrid.Height-1,(int)(y/MapViewport.ActualHeight*_currentGrid.Height)));return true;}
         private void UpdateScaleBar(){if(_currentGrid==null||MapViewport.ActualWidth<=0||_currentGrid.Latitudes.Length==0||_currentGrid.Longitudes.Length==0){ScaleBarPanel.Visibility=Visibility.Collapsed;return;}var cy=(MapViewport.ActualHeight/2-_panY)/_zoom;cy=Math.Max(0,Math.Min(MapViewport.ActualHeight-1,cy));var t=cy/Math.Max(1,MapViewport.ActualHeight-1);var lat=Interpolate(_currentGrid.Latitudes[0],_currentGrid.Latitudes[_currentGrid.Latitudes.Length-1],t);var min=_currentGrid.Longitudes.Min();var max=_currentGrid.Longitudes.Max();var across=HaversineKilometers(lat,min,lat,max)/_zoom;if(across<=0)return;var target=Math.Max(70,Math.Min(150,MapViewport.ActualWidth*.18));var nice=NiceDistance(across*target/MapViewport.ActualWidth);ScaleBarLine.Width=Math.Max(35,Math.Min(MapViewport.ActualWidth*.35,MapViewport.ActualWidth*nice/across));ScaleBarText.Text=nice>=1?$"{nice:0.##} km":$"{nice*1000:0} m";ScaleBarPanel.Visibility=Visibility.Visible;}
         private DateTime GetSelectedQueryDate(){var selected=(QueryDatePicker.SelectedDate??DateTime.Today).Date;return DateTime.SpecifyKind(selected.AddHours(12),DateTimeKind.Local);}
