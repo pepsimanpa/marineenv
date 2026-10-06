@@ -54,6 +54,9 @@ namespace KhoaSeasonalSmoke
                 Near(0.0, autumnVector.NorthwardVelocity, "autumn mean northward");
                 Near(1.0 / 3.0, autumnVector.Speed, "autumn mean speed");
                 Near(90, autumnVector.Direction, "autumn mean direction");
+                Ensure(autumnVector.Method == "CrossYearSeasonalVectorMean", "KHOA current method must identify the seasonal vector mean.");
+                Ensure(!autumnVector.ConstituentMode.HasValue, "KHOA must not expose a tidal constituent mode.");
+                Ensure(!autumnVector.ConstituentCount.HasValue, "KHOA must not expose a tidal constituent count.");
                 Ensure(Convert.ToInt32(autumn.Metadata!["sourceSampleCount"]) == 3, "Expected one sample from each of three source years");
                 Ensure((string)autumn.Metadata!["sourceYears"]! == "2020,2021,2022", "Incorrect contributing years");
                 Ensure(autumn.DateTime == new DateTime(2026, 9, 17), "Result should have the requested date, not a fabricated observation date");
