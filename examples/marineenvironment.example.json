@@ -28,7 +28,8 @@
       "unit": "m",
       "metadata": {
         "dataset": "ETOPO1 1 Arc-Minute Global Relief Model"
-      }
+      },
+      "verticalConvention": "ElevationPositiveUp"
     },
     {
       "id": "BADA2024_BATHYMETRY",
@@ -43,10 +44,11 @@
       "maxNearestDistanceKm": 10,
       "metadata": {
         "dataset": "BADA2024 격자형수심 v1.1",
-        "verticalReference": "MSL",
         "nativeGeometry": "paired LAT/LON/MSL point records",
         "note": "LAT[i], LON[i], MSL[i] form one source-native bathymetry sample; no common-grid resampling is performed in the source."
-      }
+      },
+      "verticalConvention": "DepthPositiveDown",
+      "verticalReference": "MSL"
     },
     {
       "id": "ETOPO2022",
@@ -61,7 +63,8 @@
       "metadata": {
         "dataset": "ETOPO 2022 15 arc-second surface elevation",
         "nativeResolution": "15 arc-second"
-      }
+      },
+      "verticalConvention": "ElevationPositiveUp"
     },
     {
       "id": "GEBCO2026",
@@ -72,7 +75,8 @@
       "variable": "elevation",
       "latitudeVariable": "lat",
       "longitudeVariable": "lon",
-      "unit": "m"
+      "unit": "m",
+      "verticalConvention": "ElevationPositiveUp"
     },
     {
       "id": "WOA23_TEMPERATURE",

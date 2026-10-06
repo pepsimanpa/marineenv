@@ -20,6 +20,27 @@ falls back to SHOM. If neither layer has a mapped value the cell is NoData.
 Priority does not change the ordinary point-query contract: `Query` still
 returns all independently available source and derived values.
 
+## Viewer area selection
+
+The validation Viewer keeps the rendered source map as the base layer. Seabed
+grade calculation no longer uses the whole view automatically.
+
+1. Render any READY source to establish the map view.
+2. Click **Select Area on Map**.
+3. Drag a rectangle over the sea area to analyze.
+4. The Viewer converts the rectangle to Min/Max latitude/longitude and fills
+   the grade-area coordinate fields.
+5. Configure cell count or cell size, contact density and terrain.
+6. Click **Calculate Seabed Grade**.
+
+Only the selected rectangle is sent to `QuerySeabedGradeGrid`. The A1..D3
+result is drawn as a semi-transparent overlay inside that rectangle, so the
+underlying rendered map remains visible. Re-selecting an area invalidates the
+previous grade overlay until it is recalculated.
+
+The coordinate fields remain editable, so an exact area can also be entered
+manually.
+
 ## User inputs and grid
 
 The Viewer and DLL accept either:

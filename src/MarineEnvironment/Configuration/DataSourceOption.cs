@@ -27,6 +27,17 @@ namespace MarineEnvironment.Configuration
         public string? Unit { get; init; }
 
         /// <summary>
+        /// Source-native vertical sign convention. The DLL does not invert source values;
+        /// it exposes this convention in result Metadata so callers can interpret values correctly.
+        /// </summary>
+        public VerticalConvention VerticalConvention { get; init; } = VerticalConvention.Unspecified;
+
+        /// <summary>
+        /// Optional vertical reference/datum label such as MSL. This is copied to query Metadata.
+        /// </summary>
+        public string? VerticalReference { get; init; }
+
+        /// <summary>
         /// Selection priority used only by derived/fallback workflows that must choose
         /// one source among multiple sources of the same type. Lower values win.
         /// Normal Query/QuerySource calls remain independent and are not filtered by priority.

@@ -18,6 +18,41 @@ application base directory.
 
 Use `GetSources()` to inspect the configured source status.
 
+
+## Vertical sign convention
+
+Bathymetry/elevation source values are preserved exactly as stored in each
+source product. The DLL does **not** force every bathymetry source to one sign.
+
+Use first-class source configuration to declare how a value should be
+interpreted:
+
+```json
+{
+  "id": "ETOPO1",
+  "type": "Bathymetry",
+  "verticalConvention": "ElevationPositiveUp"
+}
+```
+
+```json
+{
+  "id": "BADA2024_BATHYMETRY",
+  "type": "Bathymetry",
+  "verticalConvention": "DepthPositiveDown",
+  "verticalReference": "MSL"
+}
+```
+
+`ElevationPositiveUp` means seabed elevations are normally negative and land
+elevations are positive. `DepthPositiveDown` means water depth is normally
+positive. The declared `verticalConvention` and optional
+`verticalReference` are copied automatically into point/grid result
+`Metadata`.
+
+This preserves source-native semantics: for example, ETOPO `-100 m` remains
+`-100 m`, while a BADA `+100 m` depth remains `+100 m`.
+
 ## 2. Query one position
 
 `Query(EnvironmentQuery)` is the recommended integration API. One call returns
