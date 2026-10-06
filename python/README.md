@@ -66,12 +66,31 @@ integration.
 - `initialize(config_path=None)`
 - `get_sources()`
 - `get_source_status(source_id)`
+- `load_source(option)`
+- `reload_source(option)`
+- `unload_source(source_id)`
 - `query(latitude, longitude, depth=None, when=None)`
 - `query_source(source_id, latitude, longitude, depth=None, when=None)`
 - `query_grid(...)`
 - `query_seabed_grade_grid(...)`
-- `unload_source(source_id)`
 - `close()`
 
 `raw_manager` is available when an advanced caller needs direct access to the
 underlying .NET `MarineEnvironmentManager`.
+
+
+## Function-by-function examples
+
+Runnable examples are under `python/examples/`. They use an arbitrary
+Jinhae Bay point (35.10 N, 128.70 E) and an approximately 20 km x 20 km
+Jinhae Bay area for grid/seabed-grade examples.
+
+They can run directly from the repository without installing this package:
+
+```powershell
+python python\examples\01_initialize.py "E:\MarineDB\marineenvironment.json"
+python python\examples\03_query_all_point.py "E:\MarineDB\marineenvironment.json"
+python python\examples\08_query_seabed_grade_20km.py "E:\MarineDB\marineenvironment.json"
+```
+
+See `python/examples/README.md` for the complete list.
