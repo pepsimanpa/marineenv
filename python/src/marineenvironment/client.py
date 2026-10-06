@@ -168,6 +168,16 @@ class MarineEnvironment:
         self._ensure_open()
         return _to_python(self._manager.GetSourceStatus(source_id))
 
+    def load_source(self, option: dict[str, Any]) -> dict[str, Any]:
+        """Register or replace one data source from a Python dictionary."""
+        self._ensure_open()
+        return _to_python(self._manager.LoadSource(self._data_source_option(option)))
+
+    def reload_source(self, option: dict[str, Any]) -> dict[str, Any]:
+        """Reload one data source from a Python dictionary."""
+        self._ensure_open()
+        return _to_python(self._manager.ReloadSource(self._data_source_option(option)))
+
     def unload_source(self, source_id: str) -> bool:
         self._ensure_open()
         return bool(self._manager.UnloadSource(source_id))
@@ -284,6 +294,63 @@ class MarineEnvironment:
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("MarineEnvironment client is already closed.")
+
+    def _data_source_option(self, option: dict[str, Any]) -> Any:
+        if not isinstance(option, dict):
+            raise TypeError("option must be a Python dict")
+
+        aliases = {
+            "id": "Id",
+            "type": "Type",
+            "format": "Format",
+            "enabled": "Enabled",
+            "path": "Path",
+            "file_pattern": "FilePattern",
+            "variable": "Variable",
+            "latitude_variable": "LatitudeVariable",
+            "longitude_variable": "LongitudeVariable",
+            "depth_variable": "DepthVariable",
+            "time_variable": "TimeVariable",
+            "unit": "Unit",
+            "vertical_convention": "VerticalConvention",
+            "vertical_reference": "VerticalReference",
+            "priority": "Priority",
+            "max_nearest_distance_km": "MaxNearestDistanceKm",
+            "max_temporal_offset_days": "MaxTemporalOffsetDays",
+            "attribute_field": "AttributeField",
+            "seabed_mapping_path": "SeabedMappingPath",
+            "current_constituent_mode": "CurrentConstituentMode",
+            "dimension_map": "DimensionMap",
+            "metadata": "Metadata",
+        }
+
+        values: dict[str, Any] = {}
+        for key, value in option.items():
+            values[aliases.get(key, key)] = value
+
+        for property_name, enum_name in (
+            ("Type", "EnvironmentType"),
+            ("Format", "DataSourceFormat"),
+            ("VerticalConvention", "VerticalConvention"),
+            ("CurrentConstituentMode", "CurrentConstituentMode"),
+        ):
+            if property_name in values:
+                values[property_name] = _parse_enum(
+                    self._types[enum_name], values[property_name]
+                )
+
+        from System import String
+        from System.Collections.Generic import Dictionary
+
+        for property_name in ("DimensionMap", "Metadata"):
+            if property_name in values and values[property_name] is not None:
+                mapping = Dictionary[String, String]()
+                for key, value in values[property_name].items():
+                    mapping[str(key)] = str(value)
+                values[property_name] = mapping
+
+        data_source = self._types["DataSourceOption"]()
+        return _set(data_source, **values)
 
     def _environment_query(
         self,
