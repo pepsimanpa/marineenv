@@ -112,8 +112,8 @@ namespace KoreaSedimentSmoke
                 Check(grid.Metadata!["classificationScheme"].ToString() == "KoreaDeposit",
                     "Viewer must distinguish domestic grid from SHOM");
 
-                var missing = manager.Query("KOREA_SMOKE",
-                    new EnvironmentQuery { Latitude = 33.15, Longitude = 123.50 });
+                var missing = manager.QuerySource("KOREA_SMOKE",
+                    new EnvironmentQuery { Latitude = 33.15, Longitude = 123.50 }).SourceValue;
                 Check(missing == null, "No polygon should mean no domestic data, not global fallback");
 
                 // Two independent sources at one coordinate: Korean muddy sand

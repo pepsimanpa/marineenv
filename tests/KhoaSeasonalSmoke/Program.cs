@@ -89,12 +89,12 @@ namespace KhoaSeasonalSmoke
                 Ensure(grid.CurrentVectors != null && grid.CurrentVectors.Count == 1, "Expected exactly one site-level mean arrow");
                 Ensure(grid.CurrentVectors![0].SourceDate == null, "Mean vector must not claim one observation date");
 
-                var missing = manager.Query("KHOA_TEST", new EnvironmentQuery
+                var missing = manager.QuerySource("KHOA_TEST", new EnvironmentQuery
                 {
                     Latitude = 35,
                     Longitude = 129,
                     DateTime = new DateTime(2035, 7, 1)
-                });
+                }).SourceValue;
                 Ensure(missing == null, "Out-of-window seasonal request should return NoData");
 
                 Console.WriteLine("PASS: cross-year seasonal vector mean, per-year selection, tie, year/time independence, New Year and leap-day handling, grid, NoData.");
@@ -107,12 +107,12 @@ namespace KhoaSeasonalSmoke
 
         private static EnvironmentValue Get(MarineEnvironmentManager manager, double lat, double lon, DateTime when)
         {
-            return manager.Query("KHOA_TEST", new EnvironmentQuery
+            return manager.QuerySource("KHOA_TEST", new EnvironmentQuery
             {
                 Latitude = lat,
                 Longitude = lon,
                 DateTime = when
-            }) ?? throw new InvalidOperationException("Expected current at " + lat + ", " + lon + " on " + when);
+            }).SourceValue ?? throw new InvalidOperationException("Expected current at " + lat + ", " + lon + " on " + when);
         }
 
         private static void WriteCsv(string directory, int year, params string[] rows)

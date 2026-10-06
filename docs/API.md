@@ -138,9 +138,6 @@ var tss = result.SourceValue;
 var derived = result.DerivedValues;
 ```
 
-The older `Query(string sourceId, EnvironmentQuery)` method remains available
-and returns only the source value.
-
 Cross-source models such as ETOPO + Martin estimated seabed are produced by the
 all-source `Query(EnvironmentQuery)` call.
 

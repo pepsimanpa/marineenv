@@ -199,15 +199,6 @@ namespace MarineEnvironment
             }
         }
 
-        /// <summary>
-        /// Compatibility API returning only the configured source value.
-        /// New integrations should use QuerySource to receive derived values in the same call.
-        /// </summary>
-        public EnvironmentValue? Query(string sourceId, EnvironmentQuery query)
-        {
-            return QuerySource(sourceId, query).SourceValue;
-        }
-
         private static void AppendDirectDerivedValues(
             EnvironmentValue sourceValue,
             IReadOnlyDictionary<string, SeabedMappingLookup> mappings,
