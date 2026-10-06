@@ -10,3 +10,12 @@ Database/
 *.nc
 *.grd
 *.tar.xz
+
+
+# Python wrapper
+python/.venv/
+python/build/
+python/dist/
+python/src/*.egg-info/
+python/src/marineenvironment/lib/*
+!python/src/marineenvironment/lib/.gitkeep

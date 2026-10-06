@@ -7,7 +7,7 @@ The library supports generic NetCDF sources plus verified special-source readers
 ## Projects
 
 - `src/MarineEnvironment` — .NET 5 class library (`MarineEnvironment.dll`)
-- `src/MarineEnvironment.Viewer` — .NET 5 WPF validation viewer that renders data only through the DLL public API
+- `src/MarineEnvironment.Viewer` — .NET 5 WPF validation viewer that renders data only through the DLL public API\n- `python` — Python.NET wrapper package that exposes the same DLL through Python-friendly methods and dictionaries
 
 ## Current scope
 
@@ -151,6 +151,34 @@ src/MarineEnvironment.Viewer/bin/Release/net5.0-windows/MarineEnvironment.Viewer
 ```
 
 The viewer is intended as a DLL validation tool rather than a general-purpose NetCDF browser such as Panoply.
+
+## Python package
+
+The repository also contains a Python wrapper under `python/`. It does not
+duplicate the marine-environment algorithms; it loads the same
+`MarineEnvironment.dll` through Python.NET/CoreCLR.
+
+Development usage:
+
+```powershell
+dotnet build src/MarineEnvironment/MarineEnvironment.csproj -c Release
+python -m pip install -e ./python
+```
+
+```python
+from marineenvironment import MarineEnvironment
+
+with MarineEnvironment() as env:
+    env.initialize(r"D:\\MarineEnv\\marineenvironment.json")
+    result = env.query(latitude=35.10, longitude=129.05, depth=50)
+
+    for value in result["source_values"]:
+        print(value["source_id"], value["type"], value["value"])
+```
+
+The wrapper searches for the DLL in the repository build output, a bundled
+package `lib` directory, or `MARINEENV_DLL_DIR`. See
+`python/README.md` for wheel packaging and deployment details.
 
 ## Configuration path rules
 

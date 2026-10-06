@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marineenvironment"
+version = "0.1.0"
+description = "Python wrapper for MarineEnvironment.dll"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pythonnet>=3.0,<4"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+marineenvironment = ["lib/*"]
