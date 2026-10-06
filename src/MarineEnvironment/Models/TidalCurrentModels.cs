@@ -20,8 +20,12 @@ namespace MarineEnvironment.Models
     }
 
     /// <summary>
-    /// Synthesized tidal-current vector in SI units. Direction is the oceanographic
-    /// "toward" direction measured clockwise from true north (0=N, 90=E).
+    /// Current vector in SI units. Direction is the oceanographic "toward"
+    /// direction measured clockwise from true north (0=N, 90=E).
+    ///
+    /// Method identifies how the vector was produced. ConstituentMode and
+    /// ConstituentCount are populated only for harmonic-current products such
+    /// as FES2014; observation/composite products such as KHOA leave them null.
     /// </summary>
     public sealed class CurrentValue
     {
@@ -29,20 +33,29 @@ namespace MarineEnvironment.Models
         public double NorthwardVelocity { get; init; }
         public double Speed { get; init; }
         public double Direction { get; init; }
-        public CurrentConstituentMode ConstituentMode { get; init; }
-        public int ConstituentCount { get; init; }
+        public string Method { get; init; } = string.Empty;
+        public CurrentConstituentMode? ConstituentMode { get; init; }
+        public int? ConstituentCount { get; init; }
 
         public override string ToString()
         {
+            var detail = ConstituentMode.HasValue && ConstituentCount.HasValue
+                ? string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}, {1}/{2}",
+                    Method,
+                    ConstituentMode.Value,
+                    ConstituentCount.Value)
+                : Method;
+
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0:0.###} @ {1:0.#}° (U {2:0.###}, V {3:0.###}, {4}/{5})",
+                "{0:0.###} @ {1:0.#}° (U {2:0.###}, V {3:0.###}{4})",
                 Speed,
                 Direction,
                 EastwardVelocity,
                 NorthwardVelocity,
-                ConstituentMode,
-                ConstituentCount);
+                string.IsNullOrWhiteSpace(detail) ? string.Empty : ", " + detail);
         }
     }
 

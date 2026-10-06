@@ -147,6 +147,7 @@ namespace MarineEnvironment.Sources.Fes2014
                 NorthwardVelocity = v,
                 Speed = speed,
                 Direction = direction,
+                Method = "HarmonicSynthesis",
                 ConstituentMode = _option.CurrentConstituentMode,
                 ConstituentCount = used
             };

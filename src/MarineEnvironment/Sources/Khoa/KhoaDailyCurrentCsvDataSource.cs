@@ -729,7 +729,9 @@ namespace MarineEnvironment.Sources.Khoa
                 NorthwardVelocity = point.NorthwardVelocity,
                 Speed = point.SpeedMetersPerSecond,
                 Direction = point.DirectionDegrees,
-                ConstituentCount = 0
+                Method = "CrossYearSeasonalVectorMean",
+                ConstituentMode = null,
+                ConstituentCount = null
             };
         }
 
