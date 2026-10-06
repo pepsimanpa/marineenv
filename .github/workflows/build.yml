@@ -22,6 +22,8 @@ jobs:
           python-version: '3.11'
       - name: Install Python wrapper
         run: python -m pip install -e ./python
+      - name: Compile Python examples
+        run: python -m compileall python/examples
       - name: Python wrapper smoke test
         run: python python/tests/smoke.py
       - name: KHOA seasonal mean smoke tests
