@@ -27,8 +27,16 @@ with MarineEnvironment() as env:
         print("V (northward):", current["northward_velocity"], "m/s")
         print("speed:", current["speed"], "m/s")
         print("direction:", current["direction"], "deg")
-        print("method:", current["method"])
 
-        # KHOA는 FES 조화분조 합성이 아니므로 아래 값은 None이 정상이다.
-        print("constituent_mode:", current["constituent_mode"])
-        print("constituent_count:", current["constituent_count"])
+        if "method" not in current:
+            print(
+                "\nWARNING: loaded MarineEnvironment.dll is older than this example.\n"
+                "Rebuild the DLL with:\n"
+                "  dotnet build src\\MarineEnvironment\\MarineEnvironment.csproj -c Release"
+            )
+        else:
+            print("method:", current["method"])
+
+            # KHOA는 FES 조화분조 합성이 아니므로 아래 값은 None이 정상이다.
+            print("constituent_mode:", current["constituent_mode"])
+            print("constituent_count:", current["constituent_count"])
