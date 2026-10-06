@@ -42,6 +42,39 @@ def _parse_enum(enum_type: Any, value: Any) -> Any:
     return Enum.Parse(enum_type, value, True)
 
 
+def _coerce_property_value(prop: Any, value: Any) -> Any:
+    """Convert Python primitives to the exact CLR type expected by PropertyInfo.SetValue."""
+    if value is None:
+        return None
+
+    from System import Boolean, Double, Int16, Int32, Int64, Single, String
+    from System import Nullable
+
+    target_type = prop.PropertyType
+    nullable_underlying = Nullable.GetUnderlyingType(target_type)
+    if nullable_underlying is not None:
+        target_type = nullable_underlying
+
+    full_name = str(target_type.FullName or "")
+
+    if full_name == "System.Boolean" and isinstance(value, bool):
+        return Boolean(value)
+    if full_name == "System.Int16" and isinstance(value, int) and not isinstance(value, bool):
+        return Int16(value)
+    if full_name == "System.Int32" and isinstance(value, int) and not isinstance(value, bool):
+        return Int32(value)
+    if full_name == "System.Int64" and isinstance(value, int) and not isinstance(value, bool):
+        return Int64(value)
+    if full_name == "System.Single" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return Single(value)
+    if full_name == "System.Double" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return Double(value)
+    if full_name == "System.String" and isinstance(value, str):
+        return String(value)
+
+    return value
+
+
 def _set(obj: Any, **values: Any) -> Any:
     """Set public .NET properties, including C# init-only properties."""
     dotnet_type = obj.GetType()
@@ -52,7 +85,8 @@ def _set(obj: Any, **values: Any) -> Any:
         prop = dotnet_type.GetProperty(name)
         if prop is None:
             raise AttributeError(f"{dotnet_type.FullName} has no property {name}")
-        prop.SetValue(obj, value)
+
+        prop.SetValue(obj, _coerce_property_value(prop, value))
 
     return obj
 
