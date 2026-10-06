@@ -13,9 +13,28 @@ def main() -> None:
         assert result["source_values"] == []
         assert result["derived_values"] == []
 
+        demo = {
+            "id": "PYTHON_SMOKE_DISABLED",
+            "type": "Temperature",
+            "format": "NetCdf",
+            "enabled": False,
+            "path": ".",
+            "variable": "temperature",
+        }
+
+        loaded = env.load_source(demo)
+        assert loaded["id"] == "PYTHON_SMOKE_DISABLED"
+        assert loaded["status"] == "Disabled"
+
+        reloaded = env.reload_source(demo)
+        assert reloaded["status"] == "Disabled"
+
+        assert env.unload_source("PYTHON_SMOKE_DISABLED") is True
+        assert env.get_source_status("PYTHON_SMOKE_DISABLED") is None
+
     print(
-        "PASS: Python.NET loaded MarineEnvironment.dll, built an EnvironmentQuery, "
-        "called Query(), and converted the result to Python values."
+        "PASS: Python.NET loaded MarineEnvironment.dll, Query() converted results, "
+        "and LoadSource/ReloadSource/UnloadSource worked through the Python wrapper."
     )
 
 
