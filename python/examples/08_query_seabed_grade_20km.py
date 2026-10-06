@@ -15,19 +15,58 @@ with MarineEnvironment() as env:
         terrain="Flat",
     )
 
+    rows = result["rows"]
+    columns = result["columns"]
+
     print("model:", result["model_id"])
-    print("area grid:", result["columns"], "x", result["rows"])
+    print("area grid:", columns, "x", rows)
     print("grade cells:", result["grade_count"])
     print("NoData cells:", result["no_data_count"])
+    print(
+        "bounds:",
+        f'{result["min_latitude"]:.5f}~{result["max_latitude"]:.5f} N,',
+        f'{result["min_longitude"]:.5f}~{result["max_longitude"]:.5f} E',
+    )
 
-    print("\n처음 20개 셀:")
+    # Row 0 is the northernmost row in QuerySeabedGradeGrid.
+    # "--" means that no seabed grade could be calculated for that cell.
+    grade_grid = [["--" for _ in range(columns)] for _ in range(rows)]
+
+    for cell in result["cells"]:
+        if cell["grade"]:
+            grade_grid[cell["row"]][cell["column"]] = cell["grade"]
+
+    print("\n=== Seabed Grade Grid ===")
+    print(f'North ({result["max_latitude"]:.5f} N)')
+    print("      " + " ".join(f"{column:>3}" for column in range(columns)))
+    print("    +" + "----" * columns)
+
+    for row in range(rows):
+        print(f"{row:>3} | " + " ".join(f"{grade:>3}" for grade in grade_grid[row]))
+
+    print(f'South ({result["min_latitude"]:.5f} N)')
+    print(
+        f'West {result["min_longitude"]:.5f} E'
+        + " " * max(2, columns * 4 - 22)
+        + f'East {result["max_longitude"]:.5f} E'
+    )
+    print("Legend: -- = NoData")
+
+    print("\n=== First 20 cell details ===")
     for cell in result["cells"][:20]:
-        print(
-            f'[{cell["row"]},{cell["column"]}] '
-            f'grade={cell["grade"]} '
-            f'source={cell["source_id"]} '
-            f'seabed={cell["seabed"]} '
-            f'mud={cell["mud_percent"]} '
-            f'sand={cell["sand_percent"]} '
-            f'burial={cell["burial_rate_percent"]}'
-        )
+        if cell["grade"]:
+            print(
+                f'[{cell["row"]},{cell["column"]}] '
+                f'grade={cell["grade"]} '
+                f'source={cell["source_id"]} '
+                f'seabed={cell["seabed"]} '
+                f'mud={cell["mud_percent"]} '
+                f'sand={cell["sand_percent"]} '
+                f'burial={cell["burial_rate_percent"]}'
+            )
+        else:
+            print(
+                f'[{cell["row"]},{cell["column"]}] '
+                f'grade=-- '
+                f'reason={cell["no_data_reason"]}'
+            )
