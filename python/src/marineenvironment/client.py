@@ -93,6 +93,23 @@ def _to_python(value: Any) -> Any:
     except Exception:
         pass
 
+    # CLR arrays must be converted before DTO reflection. Array types can report
+    # the element namespace (MarineEnvironment.Models), and reflecting them as
+    # DTOs walks properties such as SyncRoot recursively.
+    if dotnet_type is not None and dotnet_type.IsArray:
+        return [_to_python(item) for item in value]
+
+    # Other .NET collection types (List<T>, IReadOnlyList<T>, etc.) should also
+    # become normal Python lists before domain-object reflection.
+    if not isinstance(value, (str, bytes, bytearray)):
+        try:
+            from System.Collections import IEnumerable
+
+            if isinstance(value, IEnumerable):
+                return [_to_python(item) for item in value]
+        except Exception:
+            pass
+
     # Convert MarineEnvironment DTOs/records recursively.
     if dotnet_type is not None:
         namespace = str(dotnet_type.Namespace or "")
@@ -108,13 +125,6 @@ def _to_python(value: Any) -> Any:
                     # whole result unusable from Python.
                     continue
             return result
-
-    # Arrays and IReadOnlyList<T>.
-    if not isinstance(value, (str, bytes, bytearray)):
-        try:
-            return [_to_python(item) for item in value]
-        except Exception:
-            pass
 
     # Python.NET primitive wrappers normally convert automatically. This is a
     # final fallback for uncommon CLR scalar values.
