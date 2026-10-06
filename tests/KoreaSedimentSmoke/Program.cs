@@ -18,9 +18,9 @@ namespace KoreaSedimentSmoke
             ("sG", "Sandy Gravel", null, null, 0),
             ("msG", "Muddy Sandy Gravel", null, null, 0),
             ("mG", "Muddy Gravel", null, null, 0),
-            ("S", "Sand", 0, 100, 5),
-            ("(g)S", "Slightly Gravelly Sand", 0, 100, 5),
-            ("gS", "Gravelly Sand", 0, 100, 5),
+            ("S", "Sand", 50, 50, 5),
+            ("(g)S", "Slightly Gravelly Sand", 50, 50, 5),
+            ("gS", "Gravelly Sand", 50, 50, 5),
             ("cS", "Clayey Sand", 50, 50, 5),
             ("zS", "Silty Sand", 50, 50, 5),
             ("mS", "Muddy Sand", 50, 50, 5),
@@ -201,6 +201,51 @@ namespace KoreaSedimentSmoke
                 Check(gradeFallback.SourcePriority == 20, "SHOM grade priority should be 20.");
                 Check(gradeFallback.Grade == "B1", "Flat + density 1 + rock should be B1.");
 
+                // Regression guard: the repository SHOM operational mapping must also start
+                // non-rock sediment at 50/50. NFS must never return the removed 0/100 class.
+                var shomSandOrigin = (X: 131.0, Y: 38.0);
+                var shomSandPath = Path.Combine(dir, "mock_shom_sand");
+                WriteShapefile(shomSandPath, "typelem", new[] { "NFS" }, new[] { shomSandOrigin });
+                var repositoryShomMapping = FindRepositoryFile(
+                    "examples", "shom.seabed.mapping.example.json");
+                var shomSandState = manager.LoadSource(new DataSourceOption
+                {
+                    Id = "SHOM_SAND_SMOKE",
+                    Type = EnvironmentType.Seabed,
+                    Format = DataSourceFormat.ShomSeabed,
+                    Path = shomSandPath + ".shp",
+                    SeabedMappingPath = repositoryShomMapping,
+                    Priority = 20
+                });
+                Check(shomSandState.Status == SourceStatus.Ready,
+                    "SHOM sand source initialization: " + shomSandState.Message);
+                var shomSandResult = manager.QuerySource("SHOM_SAND_SMOKE",
+                    new EnvironmentQuery
+                    {
+                        Longitude = shomSandOrigin.X + 0.05,
+                        Latitude = shomSandOrigin.Y + 0.05
+                    });
+                var shomSandDerived = shomSandResult.DerivedValues
+                    .Select(x => x.Value).OfType<SeabedDerivedValue>().SingleOrDefault();
+                Check(shomSandDerived != null, "NFS example mapping must produce a derived value.");
+                Equal(50, shomSandDerived!.MudPercent, "NFS example mapping mud");
+                Equal(50, shomSandDerived.SandPercent, "NFS example mapping sand");
+                Equal(5, shomSandDerived.BurialRatePercent, "NFS example mapping burial");
+
+                var shomSandGrade = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
+                {
+                    MinLatitude = shomSandOrigin.Y + 0.04,
+                    MaxLatitude = shomSandOrigin.Y + 0.06,
+                    MinLongitude = shomSandOrigin.X + 0.04,
+                    MaxLongitude = shomSandOrigin.X + 0.06,
+                    Columns = 1,
+                    Rows = 1
+                }).GetCell(0, 0);
+                Check(shomSandGrade.SourceId == "SHOM_SAND_SMOKE",
+                    "NFS grade cell should use the SHOM sand source.");
+                Check(shomSandGrade.Grade == "A1",
+                    "NFS 50/50 + Flat + density 1 should produce A1, not NoData.");
+
                 // Cell-size mode resolves dimensions inside the DLL.
                 var cellSizeGrid = manager.QuerySeabedGradeGrid(new SeabedGradeGridQuery
                 {
@@ -227,7 +272,7 @@ namespace KoreaSedimentSmoke
                 Check(invalid.Status != SourceStatus.Ready,
                     "Projected coordinates must not be silently interpreted as WGS84");
 
-                Console.WriteLine("PASS: all 22 Korean deposit codes, operational mud/sand fractions, burial rates, case sensitivity, native grid, no-data, independent SHOM + Korean query, CRS rejection.");
+                Console.WriteLine("PASS: Korean/SHOM operational mapping floor 50/50, all 22 Korean deposit codes, grade fallback, native grid, no-data, case sensitivity and CRS rejection.");
             }
             finally
             {
@@ -238,6 +283,8 @@ namespace KoreaSedimentSmoke
         private static void CheckCatalog()
         {
             Check(KoreaSedimentCatalog.All.Count == Expected.Length, "Expected 22 deposit codes");
+            Check(!KoreaSedimentCatalog.All.Any(x => x.MudPercent == 0 && x.SandPercent == 100),
+                "Domestic operational mapping must not emit the removed 0/100 sand class.");
             foreach (var e in Expected)
             {
                 Check(KoreaSedimentCatalog.TryGet(e.Code, out var d), "Catalog missing " + e.Code);
@@ -246,6 +293,29 @@ namespace KoreaSedimentSmoke
                 Equal(e.Sand, d.SandPercent, e.Code + " catalog sand");
                 Equal(e.Burial, d.BurialRatePercent, e.Code + " catalog burial");
             }
+        }
+
+        private static string FindRepositoryFile(params string[] parts)
+        {
+            var roots = new[]
+            {
+                Environment.CurrentDirectory,
+                AppContext.BaseDirectory
+            };
+
+            foreach (var initialRoot in roots)
+            {
+                var directory = new DirectoryInfo(initialRoot);
+                for (var i = 0; directory != null && i < 10; i++, directory = directory.Parent)
+                {
+                    var candidate = parts.Aggregate(directory.FullName, Path.Combine);
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
+            }
+
+            throw new FileNotFoundException(
+                "Repository file not found: " + Path.Combine(parts));
         }
 
         private static void WriteShapefile(string path, string field, string[] codes,
