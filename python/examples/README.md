@@ -36,9 +36,30 @@ python python\examples\03_query_all_point.py
 - `03_query_all_point.py` - Query: 모든 READY 소스의 한 지점 조회
 - `04_query_source_current.py` - QuerySource: KHOA 해류 한 소스 조회
 - `05_query_source_seabed.py` - QuerySource: 국내 해저저질 원값 + 직접 파생값
-- `06_query_grid_bathymetry.py` - QueryGrid: BADA 수심 영역 조회
-- `07_query_grid_current.py` - QueryGrid: KHOA 해류 영역/벡터 조회
-- `08_query_seabed_grade_20km.py` - QuerySeabedGradeGrid: 약 20 km x 20 km 해저등급 산출
+- `06_query_grid_bathymetry.py` - QueryGrid: BADA 수심 영역 조회 + Matplotlib 창 표시
+- `07_query_grid_current.py` - QueryGrid: KHOA 해류 영역/벡터 조회 + Matplotlib 창 표시
+- `08_query_seabed_grade_20km.py` - QuerySeabedGradeGrid: 약 20 km x 20 km 해저등급 산출 + Matplotlib 창 표시
 - `09_source_lifecycle.py` - LoadSource / ReloadSource / UnloadSource
 
 `with MarineEnvironment() as env:` 블록이 끝나면 Dispose가 자동 호출됩니다.
+
+
+## Matplotlib 그래프 창
+
+`06`, `07`, `08` 예제는 조회 결과를 출력한 뒤 `plt.show()`를 호출해
+MATLAB figure와 비슷한 별도 그래프 창을 띄웁니다.
+
+필수 Python 패키지:
+
+- matplotlib
+- numpy (matplotlib 의존성으로 함께 설치됨)
+
+Windows의 기본 Python 설치에 포함된 Tkinter가 있으면 Matplotlib의 TkAgg
+backend로 확대/축소, 이동, 좌표 확인, 저장 기능이 있는 창을 사용할 수 있습니다.
+
+확인:
+
+```powershell
+python -m tkinter
+python -c "import matplotlib; print(matplotlib.__version__)"
+```
