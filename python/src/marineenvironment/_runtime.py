@@ -91,23 +91,33 @@ def load_types(dll_path: str | os.PathLike[str] | None = None) -> dict[str, Any]
     clr.AddReference("MarineEnvironment")
 
     from MarineEnvironment import MarineEnvironmentManager
+    from MarineEnvironment.Configuration import DataSourceOption
     from MarineEnvironment.Models import (
+        CurrentConstituentMode,
+        DataSourceFormat,
         EnvironmentQuery,
+        EnvironmentType,
         GridQuery,
         GridResolutionMode,
         SeabedGradeGridMode,
         SeabedGradeGridQuery,
         SeabedTerrain,
+        VerticalConvention,
     )
 
     _loaded_dll = resolved
     _types = {
         "MarineEnvironmentManager": MarineEnvironmentManager,
+        "DataSourceOption": DataSourceOption,
+        "CurrentConstituentMode": CurrentConstituentMode,
+        "DataSourceFormat": DataSourceFormat,
         "EnvironmentQuery": EnvironmentQuery,
+        "EnvironmentType": EnvironmentType,
         "GridQuery": GridQuery,
         "GridResolutionMode": GridResolutionMode,
         "SeabedGradeGridMode": SeabedGradeGridMode,
         "SeabedGradeGridQuery": SeabedGradeGridQuery,
         "SeabedTerrain": SeabedTerrain,
+        "VerticalConvention": VerticalConvention,
     }
     return _types
