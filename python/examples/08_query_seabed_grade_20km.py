@@ -18,7 +18,7 @@ with MarineEnvironment() as env:
     rows = result["rows"]
     columns = result["columns"]
 
-    print("model:", result["model_id"])
+    print("model: SEABED_GRADE_V1")
     print("area grid:", columns, "x", rows)
     print("grade cells:", result["grade_count"])
     print("NoData cells:", result["no_data_count"])
