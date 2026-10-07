@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from _example_common import JINHAE_20KM, get_config_path
+from _example_common import EXAMPLE_20KM, get_config_path
 from marineenvironment import MarineEnvironment
 
 
@@ -11,7 +11,7 @@ with MarineEnvironment() as env:
 
     grid = env.query_grid(
         "KHOA_DAILY_CURRENT",
-        **JINHAE_20KM,
+        **EXAMPLE_20KM,
         when=datetime(2026, 9, 17),
         width=30,
         height=30,
