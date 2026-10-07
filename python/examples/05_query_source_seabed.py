@@ -1,4 +1,4 @@
-from _example_common import JINHAE_LAT, JINHAE_LON, get_config_path
+from _example_common import EXAMPLE_LAT, EXAMPLE_LON, get_config_path
 from marineenvironment import MarineEnvironment
 
 
@@ -9,8 +9,8 @@ with MarineEnvironment() as env:
 
     result = env.query_source(
         "KOREA_SEDIMENT",
-        latitude=JINHAE_LAT,
-        longitude=JINHAE_LON,
+        latitude=EXAMPLE_LAT,
+        longitude=EXAMPLE_LON,
     )
 
     print("=== 원 해저저질 ===")
