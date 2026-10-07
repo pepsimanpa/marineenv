@@ -175,7 +175,7 @@ EXAMPLE_20KM = {
     if readme_source.is_file():
         shutil.copy2(readme_source, DELIVER_DIR / "README.md")
 
-    database_note = DELIVER_DIR / "Database"
+    database_note = DELIVER_DIR / "db"
     database_note.mkdir(parents=True, exist_ok=True)
     (database_note / "README.txt").write_text(
         "Place the runtime marine database folders here, or update config/marineenvironment.json "
