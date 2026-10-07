@@ -37,7 +37,29 @@ def main() -> None:
 
     print(f"Copied {copied} runtime file(s) to {PACKAGE_LIB}")
 
-    run(sys.executable, "-m", "build", cwd=PYTHON_DIR)
+    build_check = subprocess.run(
+        [sys.executable, "-c", "import build"],
+        cwd=PYTHON_DIR,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    if build_check.returncode == 0:
+        run(sys.executable, "-m", "build", "--wheel", "--no-isolation", cwd=PYTHON_DIR)
+    else:
+        print("Python 'build' package is not installed; using pip wheel in offline mode.")
+        run(
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            ".",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            "dist",
+            cwd=PYTHON_DIR,
+        )
 
 
 if __name__ == "__main__":
