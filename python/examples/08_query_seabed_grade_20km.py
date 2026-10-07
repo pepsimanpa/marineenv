@@ -1,4 +1,4 @@
-from _example_common import JINHAE_20KM, get_config_path
+from _example_common import EXAMPLE_20KM, get_config_path
 from marineenvironment import MarineEnvironment
 
 
@@ -8,7 +8,7 @@ with MarineEnvironment() as env:
     env.initialize(config)
 
     result = env.query_seabed_grade_grid(
-        **JINHAE_20KM,
+        **EXAMPLE_20KM,
         grid_mode="CellSizeKilometers",
         cell_size_kilometers=2.0,
         contact_density=1,
