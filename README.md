@@ -180,6 +180,18 @@ The wrapper searches for the DLL in the repository build output, a bundled
 package `lib` directory, or `MARINEENV_DLL_DIR`. See
 `python/README.md` for wheel packaging and deployment details.
 
+## Repository configuration
+
+The repository's canonical runtime configuration files are:
+
+```text
+config/marineenvironment.json
+config/shom.seabed.mapping.json
+```
+
+Python examples use `config/marineenvironment.json` automatically when no
+explicit config path or `MARINEENV_CONFIG` value is supplied.
+
 ## Configuration path rules
 
 `path` in `marineenvironment.json` accepts both absolute and relative paths.
@@ -259,4 +271,4 @@ var grid = marine.QueryGrid("ETOPO1", new GridQuery
 });
 ```
 
-See `examples/marineenvironment.example.json` for the current configuration shape.
+See `config/marineenvironment.json` for the current configuration and `config/shom.seabed.mapping.json` for the SHOM operational mapping.
