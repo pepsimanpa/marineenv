@@ -22,7 +22,7 @@ deliver/
 │  ├─ 08_query_seabed_grade_20km.py
 │  ├─ 09_source_lifecycle.py
 │  └─ _example_common.py
-├─ Database/
+├─ db/
 │  └─ README.txt
 └─ README.md
 ```
@@ -66,7 +66,7 @@ python -c "from marineenvironment import MarineEnvironment; print('MarineEnviron
 
 ## 4. 데이터베이스 배치
 
-기본 `config/marineenvironment.json`은 배포 폴더의 `Database/`를 기준으로 상대 경로를 사용합니다.
+기본 `config/marineenvironment.json`은 배포 폴더의 `db/`를 기준으로 상대 경로를 사용합니다.
 
 예:
 
@@ -74,7 +74,7 @@ python -c "from marineenvironment import MarineEnvironment; print('MarineEnviron
 deliver/
 ├─ config/
 │  └─ marineenvironment.json
-└─ Database/
+└─ db/
    ├─ ETOPO1/
    ├─ BADA/
    ├─ KHOA/
