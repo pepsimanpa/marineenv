@@ -1,4 +1,4 @@
-from _example_common import JINHAE_20KM, get_config_path
+from _example_common import EXAMPLE_20KM, get_config_path
 from marineenvironment import MarineEnvironment
 
 
@@ -9,7 +9,7 @@ with MarineEnvironment() as env:
 
     grid = env.query_grid(
         "BADA2024_BATHYMETRY",
-        **JINHAE_20KM,
+        **EXAMPLE_20KM,
         width=40,
         height=40,
         resolution_mode="Custom",
