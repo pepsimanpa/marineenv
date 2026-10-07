@@ -81,16 +81,17 @@ underlying .NET `MarineEnvironmentManager`.
 
 ## Function-by-function examples
 
-Runnable examples are under `python/examples/`. They use an arbitrary
-Jinhae Bay point (35.10 N, 128.70 E) and an approximately 20 km x 20 km
-Jinhae Bay area for grid/seabed-grade examples.
+Runnable examples are under `python/examples/`. They use the common test point
+`34.165 N, 128.170 E` and an approximately 20 km x 20 km South Sea area.
 
-They can run directly from the repository without installing this package:
+When run from this repository, the examples automatically use
+`config/marineenvironment.json` unless a config path argument or
+`MARINEENV_CONFIG` overrides it:
 
 ```powershell
-python python\examples\01_initialize.py "E:\MarineDB\marineenvironment.json"
-python python\examples\03_query_all_point.py "E:\MarineDB\marineenvironment.json"
-python python\examples\08_query_seabed_grade_20km.py "E:\MarineDB\marineenvironment.json"
+python python\examples\01_initialize.py
+python python\examples\03_query_all_point.py
+python python\examples\08_query_seabed_grade_20km.py
 ```
 
 See `python/examples/README.md` for the complete list.
