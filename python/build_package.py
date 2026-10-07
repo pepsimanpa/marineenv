@@ -124,6 +124,7 @@ def build_delivery(wheel_path: Path) -> Path:
 
     delivery_common = """from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -132,6 +133,15 @@ from pathlib import Path
 DELIVERY_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = DELIVERY_ROOT
 DEFAULT_CONFIG = DELIVERY_ROOT / "config" / "marineenvironment.json"
+
+if importlib.util.find_spec("marineenvironment") is None:
+    wheels = sorted((DELIVERY_ROOT / "packages").glob("marineenvironment-*.whl"))
+    wheel_hint = str(wheels[-1]) if wheels else "<deliver>\\packages\\marineenvironment-*.whl"
+    raise SystemExit(
+        "marineenvironment package is not installed.\n"
+        "Install the delivery wheel first:\n"
+        f'  python -m pip install "{wheel_hint}"'
+    )
 
 
 def get_config_path() -> str:
@@ -174,6 +184,22 @@ EXAMPLE_20KM = {
     readme_source = PYTHON_DIR / "DELIVERY_README.md"
     if readme_source.is_file():
         shutil.copy2(readme_source, DELIVER_DIR / "README.md")
+
+    install_script = DELIVER_DIR / "install.ps1"
+    install_script.write_text(
+        """$ErrorActionPreference = "Stop"
+$wheel = Get-ChildItem -Path "$PSScriptRoot\\packages" -Filter "marineenvironment-*.whl" |
+    Sort-Object Name |
+    Select-Object -Last 1
+
+if (-not $wheel) {
+    throw "MarineEnvironment wheel was not found under packages."
+}
+
+python -m pip install $wheel.FullName
+""",
+        encoding="utf-8",
+    )
 
     database_note = DELIVER_DIR / "db"
     database_note.mkdir(parents=True, exist_ok=True)
