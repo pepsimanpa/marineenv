@@ -19,3 +19,6 @@ python/dist/
 python/src/*.egg-info/
 python/src/marineenvironment/lib/*
 !python/src/marineenvironment/lib/.gitkeep
+
+# Generated source-free SDK delivery
+deliver/
