@@ -14,19 +14,21 @@
 
 ## 실행
 
-모든 예제는 첫 번째 인수로 실제 `marineenvironment.json` 경로를 받습니다.
+저장소의 기본 설정파일은 `config/marineenvironment.json`입니다.
+인자와 `MARINEENV_CONFIG` 환경변수가 없으면 모든 Python 예제가 이 파일을 자동으로 사용합니다.
 
 ```powershell
-python python\examples\01_initialize.py "E:\MarineDB\marineenvironment.json"
-python python\examples\03_query_all_point.py "E:\MarineDB\marineenvironment.json"
-python python\examples\08_query_seabed_grade_20km.py "E:\MarineDB\marineenvironment.json"
+python python\examples\01_initialize.py
+python python\examples\03_query_all_point.py
+python python\examples\08_query_seabed_grade_20km.py
 ```
 
-또는 한 번만 환경변수를 설정할 수 있습니다.
+다른 설정파일을 시험할 때만 첫 번째 인수 또는 환경변수로 경로를 덮어쓸 수 있습니다.
 
 ```powershell
+python python\examples\03_query_all_point.py "E:\MarineDB\marineenvironment.json"
+
 $env:MARINEENV_CONFIG="E:\MarineDB\marineenvironment.json"
-python python\examples\01_initialize.py
 python python\examples\03_query_all_point.py
 ```
 
