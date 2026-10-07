@@ -19,7 +19,14 @@ def get_config_path() -> str:
 
     env_path = os.environ.get("MARINEENV_CONFIG")
     if env_path:
-        return str(Path(env_path).expanduser().resolve())
+        env_config = Path(env_path).expanduser().resolve()
+        if env_config.is_file():
+            return str(env_config)
+
+        print(
+            f"WARNING: MARINEENV_CONFIG 경로가 존재하지 않아 기본 설정을 사용합니다: {env_config}",
+            file=sys.stderr,
+        )
 
     if DEFAULT_CONFIG.is_file():
         return str(DEFAULT_CONFIG.resolve())
