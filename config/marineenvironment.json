@@ -1,0 +1,235 @@
+{
+  "version": "1.0",
+  "estimatedSeabedModel": {
+    "enabled": true,
+    "id": "ETOPO2022_MARTIN_SEABED_V1",
+    "terrainSourceId": "ETOPO2022",
+    "porositySourceId": "MARTIN2015_POROSITY",
+    "neighborhoodSize": 3,
+    "calibrationStride": 4,
+    "calibrationMinLatitude": 32,
+    "calibrationMaxLatitude": 43,
+    "calibrationMinLongitude": 122,
+    "calibrationMaxLongitude": 133,
+    "porosityLowPercent": 53.34,
+    "porosityHighPercent": 71.96,
+    "rockDecisionThreshold": 0.5
+  },
+  "sources": [
+    {
+      "id": "ETOPO1",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": true,
+      "path": "../Database/ETOPO1/ETOPO1_Ice_g_gmt4.nc",
+      "variable": "z",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "unit": "m",
+      "metadata": {
+        "dataset": "ETOPO1 1 Arc-Minute Global Relief Model"
+      },
+      "verticalConvention": "ElevationPositiveUp"
+    },
+    {
+      "id": "BADA2024_BATHYMETRY",
+      "type": "Bathymetry",
+      "format": "BadaBathymetry",
+      "enabled": false,
+      "path": "../Database/BADA/BADA2024_격자형수심_v1.1.nc",
+      "variable": "MSL",
+      "latitudeVariable": "LAT",
+      "longitudeVariable": "LON",
+      "unit": "m",
+      "maxNearestDistanceKm": 10,
+      "metadata": {
+        "dataset": "BADA2024 격자형수심 v1.1",
+        "nativeGeometry": "paired LAT/LON/MSL point records",
+        "note": "LAT[i], LON[i], MSL[i] form one source-native bathymetry sample; no common-grid resampling is performed in the source."
+      },
+      "verticalConvention": "DepthPositiveDown",
+      "verticalReference": "MSL"
+    },
+    {
+      "id": "ETOPO2022",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/ETOPO2022/ETOPO_2022_v1_15s_N45E120_surface.nc",
+      "variable": "z",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "unit": "m",
+      "metadata": {
+        "dataset": "ETOPO 2022 15 arc-second surface elevation",
+        "nativeResolution": "15 arc-second"
+      },
+      "verticalConvention": "ElevationPositiveUp"
+    },
+    {
+      "id": "GEBCO2026",
+      "type": "Bathymetry",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/GEBCO2026/GEBCO_2026.nc",
+      "variable": "elevation",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "unit": "m",
+      "verticalConvention": "ElevationPositiveUp"
+    },
+    {
+      "id": "WOA23_TEMPERATURE",
+      "type": "Temperature",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/WOA23/Temperature",
+      "filePattern": "woa23_decav91C0_t{MM}_04.nc",
+      "variable": "t_an",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "unit": "degC"
+    },
+    {
+      "id": "WOA23_SALINITY",
+      "type": "Salinity",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/WOA23/Salinity",
+      "filePattern": "woa23_decav91C0_s{MM}_04.nc",
+      "variable": "s_an",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "unit": "PSU"
+    },
+    {
+      "id": "KODC_CT_9423",
+      "type": "Temperature",
+      "format": "KodcClimatology",
+      "enabled": false,
+      "path": "../Database/KODC/CT_KODC_Climatology_grid_9423.nc",
+      "variable": "CT",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "timeVariable": "time",
+      "unit": "degC",
+      "metadata": {
+        "dataset": "KODC climatological Conservative Temperature",
+        "period": "1994-2023",
+        "temporalResolution": "10-day / 37 climatology slots per year",
+        "note": "Calendar year is ignored at query time; month/day selects a climatology slot."
+      }
+    },
+    {
+      "id": "KODC_SA_9423",
+      "type": "Salinity",
+      "format": "KodcClimatology",
+      "enabled": false,
+      "path": "../Database/KODC/SA_KODC_Climatology_grid_9423.nc",
+      "variable": "SA",
+      "latitudeVariable": "lat",
+      "longitudeVariable": "lon",
+      "depthVariable": "depth",
+      "timeVariable": "time",
+      "unit": "g/kg",
+      "metadata": {
+        "dataset": "KODC climatological Absolute Salinity",
+        "period": "1994-2023",
+        "temporalResolution": "10-day / 37 climatology slots per year",
+        "note": "Calendar year is ignored at query time; month/day selects a climatology slot."
+      }
+    },
+    {
+      "id": "FES2014A_CURRENT",
+      "type": "Current",
+      "format": "Fes2014Current",
+      "enabled": false,
+      "path": "../Database/FES2014a",
+      "currentConstituentMode": "Major4",
+      "metadata": {
+        "dataset": "FES2014a tide currents"
+      }
+    },
+    {
+      "id": "KHOA_DAILY_CURRENT",
+      "type": "Current",
+      "format": "KhoaDailyCurrentCsv",
+      "enabled": false,
+      "path": "../db/해양수산부_수치조류도_20260401",
+      "filePattern": "해양수산부_지능형해상교통정보_수치조류도_{YYYY}.csv",
+      "maxNearestDistanceKm": 30,
+      "maxTemporalOffsetDays": 7,
+      "metadata": {
+        "dataset": "해양수산부 지능형해상교통정보 수치조류도",
+        "temporalKey": "검색 시간",
+        "temporalMode": "per-point cross-year seasonal U/V vector mean",
+        "nativeGeometry": "irregular/curvilinear point vectors"
+      }
+    },
+    {
+      "id": "GOCI2_TSS",
+      "type": "Tss",
+      "format": "Goci2Tss",
+      "enabled": false,
+      "path": "../Database/GOCI2/TSS",
+      "variable": "TSS",
+      "latitudeVariable": "latitude",
+      "longitudeVariable": "longitude",
+      "unit": "g/m^3",
+      "metadata": {
+        "dataset": "GK2B GOCI-II Level-2 Local Area TSS mosaics",
+        "sourceProduct": "Total Suspended Solids concentration",
+        "derivedProduct": "Turbidity (viewer derived result)",
+        "aggregation": "Query-time arithmetic mean TSS of up to five LA mosaic files",
+        "derivedConversion": "Turbidity_NTU = 0.3671 * TSS_mg/L",
+        "derivedConversionModel": "KIOST_GOMSO_TSS_TURBIDITY_LINEAR",
+        "nominalSpatialResolution": "250 m",
+        "note": "Place original ..._LA_TSS.nc mosaic files in this directory. Invalid quality pixels are excluded; no averaged DB is generated."
+      }
+    },
+    {
+      "id": "MARTIN2015_POROSITY",
+      "type": "Porosity",
+      "format": "NetCdf",
+      "enabled": false,
+      "path": "../Database/Porosity/Martin2015/grl53425-sup-0002-supinfo.grd",
+      "variable": "z",
+      "latitudeVariable": "y",
+      "longitudeVariable": "x",
+      "unit": "%",
+      "metadata": {
+        "dataset": "Martin et al. (2015) global seafloor sediment porosity",
+        "grid": "5 arc-minute pixel-registered",
+        "fileFormat": "GMT NetCDF4/HDF5"
+      }
+    },
+    {
+      "id": "KOREA_SEDIMENT",
+      "type": "Seabed",
+      "format": "KoreaSediment",
+      "enabled": false,
+      "path": "../Database/KOREA_SEDIMENT/korea_sediment_deposits_type.shp",
+      "metadata": {
+        "dataset": "Korea sediment deposits type",
+        "note": "Independent domestic deposit codes (case-sensitive); project-derived sediment category and burial rate returned separately. Keep SHP/SHX/DBF/PRJ together."
+      },
+      "priority": 10
+    },
+    {
+      "id": "SHOM_SEABED",
+      "type": "Seabed",
+      "format": "ShomSeabed",
+      "enabled": false,
+      "path": "../Database/SHOM/SHAPE/CarteSedimMonde_2026.shp",
+      "attributeField": "typelem",
+      "seabedMappingPath": "./shom.seabed.mapping.json",
+      "metadata": {
+        "dataset": "SHOM Worldwide Seabed Sediment Map"
+      },
+      "priority": 20
+    }
+  ]
+}
