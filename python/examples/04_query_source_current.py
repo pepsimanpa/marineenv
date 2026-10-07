@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from _example_common import JINHAE_LAT, JINHAE_LON, get_config_path
+from _example_common import EXAMPLE_LAT, EXAMPLE_LON, get_config_path
 from marineenvironment import MarineEnvironment
 
 
@@ -11,8 +11,8 @@ with MarineEnvironment() as env:
 
     result = env.query_source(
         "KHOA_DAILY_CURRENT",
-        latitude=JINHAE_LAT,
-        longitude=JINHAE_LON,
+        latitude=EXAMPLE_LAT,
+        longitude=EXAMPLE_LON,
         when=datetime(2026, 9, 17),
     )
 
