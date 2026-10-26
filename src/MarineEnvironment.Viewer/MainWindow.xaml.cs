@@ -15,16 +15,36 @@ namespace MarineEnvironment.Viewer
 {
     public partial class MainWindow : Window
     {
+        /// <summary>
+        /// MarineEnvironment.dll의 주요 기능을 호출하는 진입점입니다.
+        /// Viewer 종료 시 <see cref="MarineEnvironmentManager.Dispose"/>를 호출하여
+        /// 데이터소스 및 네이티브 리소스를 정리합니다.
+        /// </summary>
         private readonly MarineEnvironmentManager _manager = new MarineEnvironmentManager();
         private GridResult? _currentGrid;
         private SeabedGradeGridResult? _currentSeabedGradeResult;
         private SourceState? _selectedSource;
         private double _zoom=1.0,_panX,_panY; private bool _isPanning,_dragMoved; private Point _panStart,_panOrigin;
         private const double MinZoom=1.0,MaxZoom=32.0,ZoomStep=1.25;
+        /// <summary>
+        /// Viewer를 초기화하고 창 종료 시 MarineEnvironment 관리자를 해제하도록 등록합니다.
+        /// </summary>
         public MainWindow(){InitializeComponent();QueryDatePicker.SelectedDate=DateTime.Today;Closed+=(_,_)=>_manager.Dispose();}
         private void BrowseConfig_Click(object s,RoutedEventArgs e){var d=new OpenFileDialog{Filter="MarineEnvironment config (*.json)|*.json|All files (*.*)|*.*",CheckFileExists=true};if(d.ShowDialog(this)==true)ConfigPathTextBox.Text=d.FileName;}
+        /// <summary>
+        /// 선택한 marineenvironment.json을 MarineEnvironment.dll에 전달하여 환경 DB를 초기화합니다.
+        /// 설정 파일의 활성화된 source별 경로를 로딩하고, 초기화 결과의 source 상태를 Viewer에 표시합니다.
+        /// </summary>
+        /// <param name="s">이벤트를 발생시킨 UI 객체입니다.</param>
+        /// <param name="e">버튼 클릭 이벤트 정보입니다.</param>
         private void LoadConfig_Click(object s,RoutedEventArgs e){try{var p=ConfigPathTextBox.Text.Trim();if(string.IsNullOrWhiteSpace(p)){MessageBox.Show(this,"Select marineenvironment.json first.");return;}var r=_manager.Initialize(p);SourceListBox.ItemsSource=r.Sources;SourceListBox.SelectedItem=r.Sources.FirstOrDefault(x=>x.Status==SourceStatus.Ready)??r.Sources.FirstOrDefault();StatusText.Text=$"Configuration loaded. {r.Sources.Count} source(s), {r.Sources.Count(x=>x.Status==SourceStatus.Ready)} READY.";}catch(Exception ex){MessageBox.Show(this,ex.Message,"Configuration error",MessageBoxButton.OK,MessageBoxImage.Error);}}
         private void SourceListBox_SelectionChanged(object s,SelectionChangedEventArgs e){_selectedSource=SourceListBox.SelectedItem as SourceState;if(_selectedSource==null){SelectedSourceStatusText.Text="";return;}var pointCloud=!string.IsNullOrWhiteSpace(_selectedSource.Message)&&(_selectedSource.Message.IndexOf("daily vector points",StringComparison.OrdinalIgnoreCase)>=0||_selectedSource.Message.IndexOf("paired bathymetry points",StringComparison.OrdinalIgnoreCase)>=0);var resolutionNote=_selectedSource.Type==EnvironmentType.Seabed?"\nResolution: vector polygons; Width/Height controls display rasterization.":pointCloud?"\nResolution: irregular source points; Width/Height controls display rasterization.":"\nResolution: Source Native is the default render mode for gridded sources.";SelectedSourceStatusText.Text=$"{_selectedSource.Type} / {_selectedSource.Status}"+(string.IsNullOrWhiteSpace(_selectedSource.Message)?"":$"\n{_selectedSource.Message}")+resolutionNote;}
+        /// <summary>
+        /// 선택한 데이터소스에 대해 영역 단위 Grid 조회를 수행하고 결과를 지도에 렌더링합니다.
+        /// 실제 DLL 호출은 <see cref="MarineEnvironmentManager.QueryGrid(string, GridQuery)"/>를 사용합니다.
+        /// </summary>
+        /// <param name="s">이벤트를 발생시킨 UI 객체입니다.</param>
+        /// <param name="e">버튼 클릭 이벤트 정보입니다.</param>
         private async void Render_Click(object s,RoutedEventArgs e){if(_selectedSource==null||_selectedSource.Status!=SourceStatus.Ready){MessageBox.Show(this,"Select a READY source first.");return;}if(!TryReadDouble(MinLatTextBox,out var a)||!TryReadDouble(MaxLatTextBox,out var b)||!TryReadDouble(MinLonTextBox,out var c)||!TryReadDouble(MaxLonTextBox,out var d)||!TryReadInt(GridWidthTextBox,out var w)||!TryReadInt(GridHeightTextBox,out var h)){MessageBox.Show(this,"Check view bounds and custom/display raster size.");return;}double? depth=null;if(!string.IsNullOrWhiteSpace(DepthTextBox.Text)){if(!TryReadDouble(DepthTextBox,out var dp)){MessageBox.Show(this,"Depth must be numeric or blank.");return;}depth=dp;}var resolutionMode=RenderResolutionComboBox.SelectedIndex==0?GridResolutionMode.SourceNative:GridResolutionMode.Custom;var q=new GridQuery{MinLatitude=a,MaxLatitude=b,MinLongitude=c,MaxLongitude=d,Depth=depth,DateTime=GetSelectedQueryDate(),Width=w,Height=h,ResolutionMode=resolutionMode};try{RenderButton.IsEnabled=false;Mouse.OverrideCursor=Cursors.Wait;var g=await Task.Run(()=>_manager.QueryGrid(_selectedSource.Id,q));if(g.Width<1||g.Height<1)throw new InvalidOperationException("The requested view does not intersect any renderable source cells.");_currentSeabedGradeResult=null;GradeGridCanvas.Children.Clear();ResetSeabedGradeAreaForNewMap();_currentGrid=g;MapImage.Source=CreateBitmap(g);DrawCurrentVectors(g);EmptyMapText.Visibility=Visibility.Collapsed;MapTitleText.Text=$"{g.SourceId} / {g.Type}";RangeText.Text=g.Type==EnvironmentType.Seabed?(string.Equals(TryGetMetadataString(g,"classificationScheme"),"KoreaDeposit",StringComparison.Ordinal)?"Korea deposit / project classification colors":"SHOM categorical sediment / official legend colors"):!g.Minimum.HasValue||!g.Maximum.HasValue?"No valid values":$"Min {FormatValue(g.Minimum)} | Max {FormatValue(g.Maximum)} {g.Unit}";ResolutionText.Text=BuildResolutionText(g,resolutionMode);PointResultsPanel.Visibility=Visibility.Collapsed;ResetMapTransform();ScaleBarPanel.Visibility=Visibility.Visible;UpdateScaleBar();StatusText.Text=$"Rendered {g.Width} x {g.Height} samples ({EffectiveResolutionMode(g,resolutionMode)}) for {q.DateTime:yyyy-MM-dd}.";}catch(Exception ex){MessageBox.Show(this,ex.ToString(),"Render error",MessageBoxButton.OK,MessageBoxImage.Error);}finally{Mouse.OverrideCursor=null;RenderButton.IsEnabled=true;}}
         private void SeabedGradeGridMode_SelectionChanged(object s, SelectionChangedEventArgs e)
         {
@@ -36,6 +56,14 @@ namespace MarineEnvironment.Viewer
             SeabedGradeCellSizeTextBox.IsEnabled = !byCount;
         }
 
+        /// <summary>
+        /// 선택 영역을 지정된 격자 조건으로 분할하여 해저등급 Grid를 산출합니다.
+        /// 해저저질 source는 marineenvironment.json의 priority 순서에 따라 적용되며,
+        /// 산출 결과의 각 셀에는 등급, source, 저질/매몰률 등 임무계획에 활용할 정보를 포함합니다.
+        /// 실제 DLL 호출은 <see cref="MarineEnvironmentManager.QuerySeabedGradeGrid(SeabedGradeGridQuery)"/>를 사용합니다.
+        /// </summary>
+        /// <param name="s">이벤트를 발생시킨 UI 객체입니다.</param>
+        /// <param name="e">버튼 클릭 이벤트 정보입니다.</param>
         private async void CalculateSeabedGrade_Click(object s, RoutedEventArgs e)
         {
             if (_currentGrid == null)
