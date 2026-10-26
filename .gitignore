@@ -22,3 +22,6 @@ python/src/marineenvironment/lib/*
 
 # Generated source-free SDK delivery
 deliver/
+
+# Generated vendor delivery
+deliver-vendor/
