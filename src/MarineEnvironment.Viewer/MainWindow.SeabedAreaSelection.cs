@@ -19,6 +19,12 @@ namespace MarineEnvironment.Viewer
 
         private bool IsSeabedGradeAreaDragActive => _seabedGradeAreaDragActive;
 
+        /// <summary>
+        /// 해저등급 산출 대상 영역을 지도에서 드래그하여 선택하는 모드를 시작/종료합니다.
+        /// 선택된 영역은 위/경도 경계값으로 변환되어 <see cref="SeabedGradeGridQuery"/> 입력에 사용됩니다.
+        /// </summary>
+        /// <param name="sender">이벤트를 발생시킨 UI 객체입니다.</param>
+        /// <param name="e">버튼 클릭 이벤트 정보입니다.</param>
         private void SelectSeabedGradeArea_Click(object sender, RoutedEventArgs e)
         {
             if (_currentGrid == null)
@@ -287,6 +293,11 @@ namespace MarineEnvironment.Viewer
             return true;
         }
 
+        /// <summary>
+        /// <see cref="SeabedGradeGridResult"/>를 현재 지도 좌표계에 맞춰 반투명 해저등급 레이어로 표시합니다.
+        /// 각 셀의 등급값은 DLL 산출 결과를 그대로 사용하며, Viewer는 색상화와 격자선 표시만 수행합니다.
+        /// </summary>
+        /// <param name="result">MarineEnvironment.dll에서 산출한 해저등급 Grid 결과입니다.</param>
         private void DrawSeabedGradeOverlay(SeabedGradeGridResult result)
         {
             GradeGridCanvas.Children.Clear();
@@ -343,6 +354,14 @@ namespace MarineEnvironment.Viewer
             }
         }
 
+        /// <summary>
+        /// 지정한 위/경도가 현재 해저등급 결과의 어느 셀에 해당하는지 계산합니다.
+        /// 임무계획 또는 지도 상호작용 시 셀별 등급/source 정보를 확인할 때 사용할 수 있습니다.
+        /// </summary>
+        /// <param name="latitude">조회 위도입니다.</param>
+        /// <param name="longitude">조회 경도입니다.</param>
+        /// <param name="cell">해당 위치의 해저등급 셀입니다.</param>
+        /// <returns>현재 해저등급 영역 내부의 유효 셀을 찾으면 true입니다.</returns>
         private bool TryGetSeabedGradeCellAtGeo(
             double latitude, double longitude, out SeabedGradeCell cell)
         {
