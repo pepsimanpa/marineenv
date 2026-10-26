@@ -8,6 +8,12 @@ namespace MarineEnvironment.Viewer
 {
     public partial class MainWindow
     {
+        /// <summary>
+        /// 해류 Grid 조회 결과를 지도 위 벡터 화살표로 표시합니다.
+        /// 불규칙 원시 관측점이 <see cref="GridResult.CurrentVectors"/>에 포함된 경우에는
+        /// 실제 source 좌표를 우선 사용하고, 그렇지 않으면 raster 방향값을 사용합니다.
+        /// </summary>
+        /// <param name="grid">MarineEnvironment.dll의 해류 Grid 조회 결과입니다.</param>
         private void DrawCurrentVectors(GridResult grid)
         {
             CurrentVectorCanvas.Children.Clear();
@@ -28,6 +34,11 @@ namespace MarineEnvironment.Viewer
             DrawRasterCurrentVectors(grid);
         }
 
+        /// <summary>
+        /// KHOA 등 불규칙 point-cloud 해류 source의 실제 좌표와 방향을 사용하여 벡터를 표시합니다.
+        /// 화면 가독성을 위해 표시 단계에서만 간격을 줄이며 원본 조회 데이터는 변경하지 않습니다.
+        /// </summary>
+        /// <param name="grid">실제 source 좌표가 CurrentVectors에 포함된 Grid 결과입니다.</param>
         private void DrawSourcePointCurrentVectors(GridResult grid)
         {
             if (grid.Latitudes.Length == 0 || grid.Longitudes.Length == 0 || grid.CurrentVectors == null)
@@ -67,6 +78,10 @@ namespace MarineEnvironment.Viewer
             }
         }
 
+        /// <summary>
+        /// 규칙 Grid 형태의 해류 결과에서 방향/속도 셀을 추출하여 벡터를 표시합니다.
+        /// </summary>
+        /// <param name="grid">방향값이 포함된 해류 Grid 결과입니다.</param>
         private void DrawRasterCurrentVectors(GridResult grid)
         {
             var viewportWidth = MapViewport.ActualWidth;
