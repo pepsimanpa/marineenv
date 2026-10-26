@@ -13,6 +13,13 @@ namespace MarineEnvironment.Viewer
     {
         private bool _pointQueryInProgress;
 
+        /// <summary>
+        /// 지도에서 선택한 지점을 기준으로 모든 READY 데이터소스의 환경정보를 조회합니다.
+        /// <see cref="MarineEnvironmentManager.Query(EnvironmentQuery)"/>를 호출하여 원 데이터와
+        /// 파생값을 한 번에 수신하며, 해저등급 결과가 존재하면 해당 셀의 등급도 함께 표시합니다.
+        /// </summary>
+        /// <param name="position">MapViewport 기준의 마우스 위치입니다.</param>
+        /// <returns>비동기 조회 작업입니다.</returns>
         private async Task QueryAllSourcesAtViewportPosition(Point position)
         {
             if (_currentGrid == null)
@@ -113,6 +120,12 @@ namespace MarineEnvironment.Viewer
             };
         }
 
+        /// <summary>
+        /// DLL에서 반환된 파생 환경값을 Viewer 표시에 사용하는 행 데이터로 변환합니다.
+        /// TSS 기반 탁도, SHOM/국내 해저저질 매핑, 추정 해저저질을 동일한 표시 형식으로 정리합니다.
+        /// </summary>
+        /// <param name="value">MarineEnvironment.dll에서 반환된 파생 환경값입니다.</param>
+        /// <returns>Viewer 파생결과 표에 표시할 행 집합입니다.</returns>
         private static IEnumerable<DerivedResultRow> CreateDerivedRows(EnvironmentValue value)
         {
             if (value.Type == EnvironmentType.Turbidity && value.Value is double turbidity)
