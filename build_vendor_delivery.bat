@@ -50,7 +50,6 @@ mkdir "%OUT%"
 mkdir "%OUT%\Viewer"
 mkdir "%OUT%\lib"
 mkdir "%OUT%\config"
-mkdir "%OUT%\db"
 mkdir "%OUT%\native"
 mkdir "%OUT%\app"
 
@@ -102,6 +101,7 @@ if exist "%NATIVE_SOURCE%" (
 )
 
 if "%COPY_DB%"=="1" (
+    mkdir "%OUT%\db" >nul 2>&1
     if exist "%DB_SOURCE%" (
         echo [7/9] Copying runtime DB...
         robocopy "%DB_SOURCE%" "%OUT%\db" /E /R:1 /W:1 /XD .git bin obj >nul
@@ -114,28 +114,17 @@ if "%COPY_DB%"=="1" (
         >"%OUT%\db\README.txt" echo Place runtime database files here. Paths in config\marineenvironment.json are relative to this folder.
     )
 ) else (
-    echo [7/9] DB copy skipped because COPY_DB=0.
-    >"%OUT%\db\README.txt" echo DB files are delivered separately. Place them here or update config\marineenvironment.json.
+    echo [7/9] DB copy skipped because COPY_DB=0. No db folder will be included.
 )
 
 echo [8/9] Creating Viewer-only solution and validating build...
-pushd "%OUT%"
-dotnet new sln -n MarineEnvironment.Viewer --force >nul
-if errorlevel 1 (
-    popd
-    goto :fail
-)
-dotnet sln "MarineEnvironment.Viewer.sln" add "Viewer\MarineEnvironment.Viewer.csproj" >nul
-if errorlevel 1 (
-    popd
-    goto :fail
-)
-dotnet build "Viewer\MarineEnvironment.Viewer.csproj" -c Release
-if errorlevel 1 (
-    popd
-    goto :fail
-)
-popd
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$sln = @('Microsoft Visual Studio Solution File, Format Version 12.00','# Visual Studio Version 17','VisualStudioVersion = 17.0.31903.59','MinimumVisualStudioVersion = 10.0.40219.1','Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarineEnvironment.Viewer", "Viewer\MarineEnvironment.Viewer.csproj", "{EFA9E468-7BD8-42EF-973A-2C196A919F67}"','EndProject','Global','    GlobalSection(SolutionConfigurationPlatforms) = preSolution','        Debug|Any CPU = Debug|Any CPU','        Release|Any CPU = Release|Any CPU','    EndGlobalSection','    GlobalSection(ProjectConfigurationPlatforms) = postSolution','        {EFA9E468-7BD8-42EF-973A-2C196A919F67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU','        {EFA9E468-7BD8-42EF-973A-2C196A919F67}.Debug|Any CPU.Build.0 = Debug|Any CPU','        {EFA9E468-7BD8-42EF-973A-2C196A919F67}.Release|Any CPU.ActiveCfg = Release|Any CPU','        {EFA9E468-7BD8-42EF-973A-2C196A919F67}.Release|Any CPU.Build.0 = Release|Any CPU','    EndGlobalSection','    GlobalSection(SolutionProperties) = preSolution','        HideSolutionNode = FALSE','    EndGlobalSection','EndGlobal');" ^
+  "[System.IO.File]::WriteAllLines('%OUT%\MarineEnvironment.Viewer.sln', $sln, (New-Object System.Text.UTF8Encoding($false)));"
+if errorlevel 1 goto :fail
+
+dotnet build "%OUT%\Viewer\MarineEnvironment.Viewer.csproj" -c Release
+if errorlevel 1 goto :fail
 
 if exist "%OUT%\Viewer\bin\Release\net5.0-windows" (
     robocopy "%OUT%\Viewer\bin\Release\net5.0-windows" "%OUT%\app" /E /R:1 /W:1 /XF *.pdb >nul
