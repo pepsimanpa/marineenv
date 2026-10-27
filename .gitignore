@@ -25,3 +25,6 @@ deliver/
 
 # Generated vendor delivery
 deliver-vendor/
+
+# Runtime marine database files are not stored in Git.
+db/
