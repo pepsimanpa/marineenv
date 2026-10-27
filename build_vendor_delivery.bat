@@ -126,12 +126,20 @@ if errorlevel 1 goto :fail
 dotnet build "%OUT%\Viewer\MarineEnvironment.Viewer.csproj" -c Release
 if errorlevel 1 goto :fail
 
-if exist "%OUT%\Viewer\bin\Release\net5.0-windows" (
-    robocopy "%OUT%\Viewer\bin\Release\net5.0-windows" "%OUT%\app" /E /R:1 /W:1 /XF *.pdb >nul
-    if errorlevel 8 (
-        echo ERROR: Failed to copy prebuilt Viewer.
-        goto :fail
-    )
+echo       Publishing self-contained win-x64 Viewer...
+dotnet publish "%OUT%\Viewer\MarineEnvironment.Viewer.csproj" -c Release -r win-x64 --self-contained true -o "%OUT%\app"
+if errorlevel 1 (
+    echo ERROR: Failed to publish self-contained Viewer.
+    goto :fail
+)
+
+if not exist "%OUT%\app\MarineEnvironment.Viewer.exe" (
+    echo ERROR: Self-contained Viewer executable was not created.
+    goto :fail
+)
+if not exist "%OUT%\app\coreclr.dll" (
+    echo ERROR: Self-contained .NET runtime was not included.
+    goto :fail
 )
 
 rem Keep delivered Viewer source clean.
@@ -155,7 +163,7 @@ echo.
 echo Included:
 echo   - Viewer source
 echo   - MarineEnvironment.dll without core C# source
-echo   - Prebuilt Viewer application
+echo   - Self-contained win-x64 Viewer application ^(no .NET install required^)
 echo   - config
 echo   - db ^(COPY_DB=%COPY_DB%^)
 echo   - native runtime when available
