@@ -27,7 +27,7 @@ set "CONFIG_SOURCE=%ROOT%config"
 set "DB_SOURCE=%ROOT%db"
 set "NATIVE_SOURCE=%ROOT%native\win-x64"
 set "README_SOURCE=%ROOT%docs\VENDOR_DELIVERY_README.md"
-set "COPY_DB=1"
+if not defined COPY_DB set "COPY_DB=1"
 
 echo.
 echo ============================================================
