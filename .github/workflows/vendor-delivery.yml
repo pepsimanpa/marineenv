@@ -1,0 +1,45 @@
+name: vendor-delivery
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-vendor-delivery:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 5 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '5.0.408'
+
+      - name: Create vendor delivery
+        shell: cmd
+        env:
+          COPY_DB: 0
+        run: build_vendor_delivery.bat
+
+      - name: Write build information
+        shell: powershell
+        run: |
+          @"
+          MarineEnvironment Vendor Delivery
+          Commit: $env:GITHUB_SHA
+          Branch: $env:GITHUB_REF_NAME
+          Run: $env:GITHUB_RUN_NUMBER
+          Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss K")
+          DB: not included
+          "@ | Set-Content -Path "deliver-vendor\BUILD_INFO.txt" -Encoding UTF8
+
+      - name: Upload vendor delivery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: marineenvironment-vendor-delivery-${{ github.run_number }}
+          path: deliver-vendor/
+          if-no-files-found: error
+          retention-days: 14
