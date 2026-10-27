@@ -9,9 +9,8 @@ deliver-vendor/
 ├─ MarineEnvironment.Viewer.sln
 ├─ Viewer/        Viewer C# / WPF 소스
 ├─ lib/           MarineEnvironment.dll 및 런타임 파일
-├─ app/           빌드 완료된 Viewer 실행 파일
+├─ app/           self-contained win-x64 Viewer 실행 파일
 ├─ config/        marineenvironment.json, SHOM 매핑
-├─ db/            해양환경 DB
 ├─ native/        NetCDF-C / HDF5 x64 네이티브 런타임
 └─ README.md
 ```
@@ -20,7 +19,7 @@ deliver-vendor/
 
 ## Viewer 실행
 
-빌드된 실행 파일을 사용할 경우:
+빌드된 실행 파일을 사용할 경우(.NET 설치 불필요):
 
 ```text
 app/MarineEnvironment.Viewer.exe
@@ -32,7 +31,7 @@ Viewer에서 **Browse...**를 눌러 다음 설정 파일을 선택한 뒤 **Loa
 config/marineenvironment.json
 ```
 
-설정 파일의 DB 경로는 기본적으로 `../db/...` 형태이므로, 본 전달본의 `db/` 구조를 유지하면 됩니다.
+설정 파일의 DB 경로는 기본적으로 `../db/...` 형태입니다. GitHub 자동 전달본에는 DB를 포함하지 않으므로, 실제 운용 시 전달본 루트에 `db/`를 별도로 배치하거나 설정 파일의 경로를 실제 DB 위치에 맞게 수정합니다.
 
 ## Viewer 소스 빌드
 
@@ -70,7 +69,7 @@ Viewer 소스에서 다음 기능의 실제 사용 예를 확인할 수 있습�
 
 ## DB 및 네이티브 런타임
 
-`config/marineenvironment.json`에서 활성화된 데이터소스의 DB가 `db/`에 존재해야 합니다.
+`config/marineenvironment.json`에서 활성화된 데이터소스의 DB는 별도 전달합니다. 기본 설정을 그대로 사용할 경우 전달본 루트에 `db/`를 배치합니다.
 
 NetCDF 기반 데이터소스를 사용할 경우 `native/win-x64/`에 프로젝트에서 검증한 x64 NetCDF-C/HDF5 런타임 DLL 세트가 필요합니다. BAT 실행 시 원본 저장소의 `native/win-x64/`가 존재하면 자동으로 복사됩니다.
 
@@ -94,8 +93,11 @@ NetCDF 기반 데이터소스를 사용할 경우 `native/win-x64/`에 프로젝
 build_vendor_delivery.bat
 ```
 
-기본값은 DB까지 `deliver-vendor/db/`로 복사합니다. DB를 별도 전달하려면 `build_vendor_delivery.bat` 상단의 다음 값을 변경합니다.
+로컬 BAT 실행 시에는 DB 복사가 기본값입니다. DB 없이 만들려면 실행 전에 다음과 같이 지정합니다.
 
 ```bat
-set "COPY_DB=0"
+set COPY_DB=0
+build_vendor_delivery.bat
 ```
+
+GitHub Actions의 `vendor-delivery`는 DB 없이 생성하며, `app/`은 .NET 런타임을 포함한 self-contained win-x64 형태로 publish합니다.
